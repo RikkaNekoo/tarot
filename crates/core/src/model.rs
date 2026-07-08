@@ -62,7 +62,10 @@ impl RawCardData {
 
     /// 按键查找原始字段。
     pub fn get(&self, key: &str) -> Option<&str> {
-        self.raw_fields.iter().find(|(k, _)| k == key).map(|(_, v)| v.as_str())
+        self.raw_fields
+            .iter()
+            .find(|(k, _)| k == key)
+            .map(|(_, v)| v.as_str())
     }
 }
 

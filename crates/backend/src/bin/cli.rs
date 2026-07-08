@@ -5,12 +5,12 @@
 //!   cli read [--reader NAME]  读取一次并打印原始十六进制数据
 //!   cli monitor               轮询等待插卡后自动读取
 
+use clap::{Parser, Subcommand};
+use std::{thread, time::Duration};
 use tarot_backend::{
     list_readers, read_from_reader, read_traveldoc_from_reader, reader::PcscManager,
 };
 use tarot_core::{Error, PassportKey};
-use clap::{Parser, Subcommand};
-use std::{thread, time::Duration};
 
 #[derive(Parser)]
 #[command(name = "tarot-cli", about = "PC/SC 智能卡原始数据读取工具")]

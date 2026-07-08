@@ -12,8 +12,8 @@
 
 use super::crypto;
 use super::sm::{self, SecureSession};
-use tarot_core::{Apdu, Error, PassportKey, RawCardData, Result, Transceiver};
 use rand::RngCore;
+use tarot_core::{Apdu, Error, PassportKey, RawCardData, Result, Transceiver};
 
 /// eMRTD 应用 AID：A0 00 00 02 47 10 01
 const EMRTD_AID: [u8; 7] = [0xA0, 0x00, 0x00, 0x02, 0x47, 0x10, 0x01];

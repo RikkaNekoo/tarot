@@ -35,7 +35,14 @@ pub fn read_octopus<T: Transceiver>(tx: &mut T, data: &mut RawCardData) -> Resul
     data.sub_cards.push("Octopus".to_string());
 
     // 2. Read Without Encryption 读余额块（block 0）
-    read_block(tx, &idm, BALANCE_SERVICE, 0x00, data, "felica_balance_block");
+    read_block(
+        tx,
+        &idm,
+        BALANCE_SERVICE,
+        0x00,
+        data,
+        "felica_balance_block",
+    );
 
     Ok(())
 }

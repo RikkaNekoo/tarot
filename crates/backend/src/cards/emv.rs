@@ -21,8 +21,8 @@ pub fn probe_ppse<T: Transceiver>(tx: &mut T, data: &mut RawCardData) -> Result<
 
     // 若候选 AID 全部属于交通联合（A0000006320101..，在 PPSE 注册的非银行应用），
     // 则不算独立 EMV 卡，避免与交通联合叠加时误报。
-    let all_transit = !candidate_aids.is_empty()
-        && candidate_aids.iter().all(|a| a.starts_with("A000000632"));
+    let all_transit =
+        !candidate_aids.is_empty() && candidate_aids.iter().all(|a| a.starts_with("A000000632"));
     if all_transit {
         return Ok(false);
     }

@@ -11,8 +11,8 @@ pub mod atr;
 pub mod cards;
 pub mod reader;
 
-use tarot_core::{PassportKey, RawCardData, Result};
 use reader::PcscManager;
+use tarot_core::{PassportKey, RawCardData, Result};
 
 /// 一次完整读卡：自动选第一个读卡器、连接、按 ATR 推断协议层并读取。
 ///

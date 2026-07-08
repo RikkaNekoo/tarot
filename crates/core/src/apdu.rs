@@ -17,7 +17,9 @@ pub struct Apdu {
 impl Apdu {
     /// 从原始字节构造（用于裸命令，如 Mifare `30xx`、FeliCa 帧）。
     pub fn from_bytes(bytes: impl Into<Vec<u8>>) -> Self {
-        Self { bytes: bytes.into() }
+        Self {
+            bytes: bytes.into(),
+        }
     }
 
     /// 从十六进制字符串构造，如 `"00A4040000"`。
@@ -28,7 +30,9 @@ impl Apdu {
 
     /// case 2：有 Le 无数据（`CLA INS P1 P2 Le`）。
     pub fn case2(cla: u8, ins: u8, p1: u8, p2: u8, le: u8) -> Self {
-        Self { bytes: vec![cla, ins, p1, p2, le] }
+        Self {
+            bytes: vec![cla, ins, p1, p2, le],
+        }
     }
 
     /// case 3：有数据无 Le（`CLA INS P1 P2 Lc Data`）。
@@ -108,7 +112,10 @@ impl ApduResponse {
         if self.is_ok() {
             Ok(self)
         } else {
-            Err(Error::ApduStatus { sw1: self.sw1, sw2: self.sw2 })
+            Err(Error::ApduStatus {
+                sw1: self.sw1,
+                sw2: self.sw2,
+            })
         }
     }
 }

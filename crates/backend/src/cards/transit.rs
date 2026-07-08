@@ -6,11 +6,7 @@ use super::helpers::{read_basic_info_file, read_pboc_balance_atc_trans, select_a
 use tarot_core::{Apdu, RawCardData, Result, Transceiver};
 
 /// 已 SELECT 成功后，按卡名读取该卡的余额/交易/信息文件。
-pub fn read_by_name<T: Transceiver>(
-    tx: &mut T,
-    name: &str,
-    data: &mut RawCardData,
-) -> Result<()> {
+pub fn read_by_name<T: Transceiver>(tx: &mut T, name: &str, data: &mut RawCardData) -> Result<()> {
     match name {
         "ShenzhenTong" | "WuhanTong" | "CityUnion" | "TUnion" => {
             read_basic_info_file(tx, data, &format!("{name}_file15"))?;

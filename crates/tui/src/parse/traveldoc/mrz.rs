@@ -8,7 +8,10 @@ pub const FILLER: char = '<';
 
 /// 去掉 MRZ 填充符，其余填充符视作分隔空格，两端修剪。
 pub fn field(s: &str) -> String {
-    s.trim_matches(FILLER).replace(FILLER, " ").trim().to_string()
+    s.trim_matches(FILLER)
+        .replace(FILLER, " ")
+        .trim()
+        .to_string()
 }
 
 /// 拆分姓名字段（姓与名以两个填充符分隔），返回 (姓, 名)。

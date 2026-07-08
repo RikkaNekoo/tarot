@@ -3,9 +3,9 @@
 //! 目标硬件为 ACR1251U（CCID）。ISO 14443-4 卡的 APDU 直接透传；
 //! Mifare/FeliCa 的裸命令由上层 `cards` 模块封装为 ACR 伪 APDU 后再经此发送。
 
-use tarot_core::{Apdu, ApduResponse, ApduTrace, Error, Result, Transceiver};
 use pcsc::{Card, Context, Protocols, Scope, ShareMode, MAX_BUFFER_SIZE};
 use std::ffi::CString;
+use tarot_core::{Apdu, ApduResponse, ApduTrace, Error, Result, Transceiver};
 
 /// 读卡器上的卡片状态。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -36,9 +36,7 @@ impl PcscManager {
             .ctx
             .list_readers(&mut buf)
             .map_err(|e| Error::Pcsc(format!("list readers: {e}")))?;
-        let names: Vec<String> = readers
-            .map(|r| r.to_string_lossy().into_owned())
-            .collect();
+        let names: Vec<String> = readers.map(|r| r.to_string_lossy().into_owned()).collect();
         Ok(names)
     }
 
@@ -52,8 +50,8 @@ impl PcscManager {
 
     /// 尝试连接指定读卡器上的卡片。若无卡返回 `NoCard`。
     pub fn connect(&self, reader: &str) -> Result<CardSession> {
-        let c_reader = CString::new(reader)
-            .map_err(|e| Error::Other(format!("bad reader name: {e}")))?;
+        let c_reader =
+            CString::new(reader).map_err(|e| Error::Other(format!("bad reader name: {e}")))?;
         match self
             .ctx
             .connect(&c_reader, ShareMode::Shared, Protocols::ANY)
@@ -67,8 +65,8 @@ impl PcscManager {
     /// 查询读卡器当前卡片状态（不建立连接），用于 TUI 状态监控。
     pub fn status(&self, reader: &str) -> Result<CardStatus> {
         use pcsc::{ReaderState, State};
-        let c_reader = CString::new(reader)
-            .map_err(|e| Error::Other(format!("bad reader name: {e}")))?;
+        let c_reader =
+            CString::new(reader).map_err(|e| Error::Other(format!("bad reader name: {e}")))?;
         let mut states = [ReaderState::new(c_reader, State::UNAWARE)];
         self.ctx
             .get_status_change(std::time::Duration::from_millis(0), &mut states)
@@ -91,7 +89,10 @@ pub struct CardSession {
 
 impl CardSession {
     fn new(card: Card) -> Self {
-        Self { card, history: Vec::new() }
+        Self {
+            card,
+            history: Vec::new(),
+        }
     }
 
     /// 读取卡片 ATR（Answer To Reset）原始字节。
@@ -128,7 +129,11 @@ impl CardSession {
             Err(pcsc::Error::ResetCard) => {
                 // 卡片复位：重新上电后重试一次。
                 self.card
-                    .reconnect(ShareMode::Shared, Protocols::ANY, pcsc::Disposition::ResetCard)
+                    .reconnect(
+                        ShareMode::Shared,
+                        Protocols::ANY,
+                        pcsc::Disposition::ResetCard,
+                    )
                     .map_err(|e| Error::Pcsc(format!("reconnect: {e}")))?;
                 let mut rx2 = vec![0u8; MAX_BUFFER_SIZE];
                 match self.card.transmit(apdu, &mut rx2) {
@@ -152,7 +157,11 @@ impl Transceiver for CardSession {
         // 空响应：某些卡对不支持的指令会返回 0 字节。
         // 转为哨兵状态 SW=0000（视为“失败但非致命”），让探测链继续而非中断。
         if raw.len() < 2 {
-            let parsed = ApduResponse { data: vec![], sw1: 0x00, sw2: 0x00 };
+            let parsed = ApduResponse {
+                data: vec![],
+                sw1: 0x00,
+                sw2: 0x00,
+            };
             self.history.push(ApduTrace {
                 tx: apdu.to_hex(),
                 rx: hex::encode_upper(&raw),
@@ -185,7 +194,11 @@ impl Transceiver for CardSession {
             // 把已有数据与新数据拼接，SW 用最新一段的。
             let mut merged = parsed.data.clone();
             merged.extend_from_slice(&next.data);
-            parsed = ApduResponse { data: merged, sw1: next.sw1, sw2: next.sw2 };
+            parsed = ApduResponse {
+                data: merged,
+                sw1: next.sw1,
+                sw2: next.sw2,
+            };
         }
 
         // 记录到历史（成功与失败都记，便于调试）。

@@ -20,7 +20,9 @@ pub fn encode_len(len: usize) -> Vec<u8> {
 
 /// 解析 TLV 长度，返回 (长度, 消耗字节数)。从 data[pos] 起。
 pub fn parse_len(data: &[u8], pos: usize) -> Result<(usize, usize)> {
-    let first = *data.get(pos).ok_or_else(|| Error::Passport("TLV 长度越界".into()))?;
+    let first = *data
+        .get(pos)
+        .ok_or_else(|| Error::Passport("TLV 长度越界".into()))?;
     if first < 0x80 {
         Ok((first as usize, 1))
     } else {
@@ -45,7 +47,11 @@ pub struct SecureSession {
 
 impl SecureSession {
     pub fn new(ks_enc: Vec<u8>, ks_mac: Vec<u8>, ssc: [u8; 8]) -> Self {
-        Self { ks_enc, ks_mac, ssc }
+        Self {
+            ks_enc,
+            ks_mac,
+            ssc,
+        }
     }
 
     /// SSC 视为大端整数 +1。

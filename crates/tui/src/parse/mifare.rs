@@ -37,7 +37,8 @@ pub fn parse_classic(raw: &RawCardData) -> ParsedCard {
         card.add_field("已读字节", bytes.len().to_string());
         card.add_field("原始数据", truncate_hex(hex, 64));
     } else {
-        card.notes.push("未读到 Classic 数据（密钥可能不匹配）".into());
+        card.notes
+            .push("未读到 Classic 数据（密钥可能不匹配）".into());
     }
     card
 }

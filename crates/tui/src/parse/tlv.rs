@@ -60,7 +60,11 @@ pub fn parse(bytes: &[u8]) -> Vec<Tlv> {
         let value = bytes[i..end].to_vec();
         i = end;
 
-        let children = if constructed { parse(&value) } else { Vec::new() };
+        let children = if constructed {
+            parse(&value)
+        } else {
+            Vec::new()
+        };
         out.push(Tlv {
             tag: hex::encode_upper(&tag_bytes),
             value,

@@ -208,7 +208,10 @@ fn parse_get_data_fields(raw: &RawCardData, card: &mut ParsedCard) {
     if let Some(pin) = raw.get("emv_pin_retry") {
         let nodes = tlv::parse(&hex_to_bytes(pin));
         if let Some(t) = tlv::find(&nodes, "9F17") {
-            card.add_field("PIN 剩余重试", be_uint(&t.value, 0, t.value.len()).to_string());
+            card.add_field(
+                "PIN 剩余重试",
+                be_uint(&t.value, 0, t.value.len()).to_string(),
+            );
         }
     }
 }
