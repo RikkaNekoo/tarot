@@ -265,6 +265,20 @@ fn tti_name(tti: &str) -> &'static str {
     }
 }
 
+/// 岭南通交易记录只提供 MMDD，不可靠包含年份。
+fn fmt_month_day4(hex4: &str) -> String {
+    if hex4.len() < 4 || !hex4.chars().take(4).all(|c| c.is_ascii_digit()) {
+        return String::new();
+    }
+    let d = &hex4[0..4];
+    let month: u32 = d[0..2].parse().unwrap_or(0);
+    let day: u32 = d[2..4].parse().unwrap_or(0);
+    if !(1..=12).contains(&month) || !(1..=31).contains(&day) {
+        return String::new();
+    }
+    format!("{}-{}", &d[0..2], &d[2..4])
+}
+
 /// 解析交易记录（每条原始 23 字节）。偏移见文档（hex 位）。
 fn parse_transactions(name: &str, raw: &RawCardData, card: &mut ParsedCard) {
     for n in 1u8..=10 {
@@ -299,7 +313,11 @@ fn parse_transactions(name: &str, raw: &RawCardData, card: &mut ParsedCard) {
         // 终端号 20..32（hex 位）=> 字节 10..16
         t.terminal = slice(hex, 20, 32).to_string();
         // 日期 32..40（hex 位）=> 字节 16..20
-        t.date = fmt_date8(slice(hex, 32, 40));
+        t.date = if name == "LingnanPass" {
+            fmt_month_day4(slice(hex, 36, 40))
+        } else {
+            fmt_date8(slice(hex, 32, 40))
+        };
         // 时间 40..46（hex 位）=> 字节 20..23
         t.time = fmt_time6(slice(hex, 40, 46));
         card.transactions.push(t);
