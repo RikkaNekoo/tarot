@@ -6,6 +6,7 @@
 mod app;
 mod history;
 mod parse;
+mod settings;
 mod ui;
 
 use app::App;
@@ -79,13 +80,16 @@ fn handle_key(app: &mut App, code: KeyCode) {
         handle_traveldoc_key(app, code);
         return;
     }
+    if app.is_settings_open() {
+        handle_settings_key(app, code);
+        return;
+    }
     match code {
         KeyCode::Char('q') | KeyCode::Esc => app.should_quit = true,
         KeyCode::Char('t') => app.start_traveldoc_input(),
-        KeyCode::Char('r') => app.read_now(),
         KeyCode::Enter => app.on_enter(),
         KeyCode::Char('s') => app.save_current_transit(),
-        KeyCode::Char('a') => app.toggle_auto(),
+        KeyCode::Char(',') => app.open_settings(),
         KeyCode::Tab => app.cycle_focus(),
         KeyCode::Up | KeyCode::Char('k') => app.on_up(),
         KeyCode::Down | KeyCode::Char('j') => app.on_down(),
@@ -98,6 +102,18 @@ fn handle_key(app: &mut App, code: KeyCode) {
         }
         KeyCode::PageUp => app.on_page(true),
         KeyCode::PageDown => app.on_page(false),
+        _ => {}
+    }
+}
+
+/// 设置菜单键位：上下选择，Enter/Space 切换，Esc 关闭。
+fn handle_settings_key(app: &mut App, code: KeyCode) {
+    match code {
+        KeyCode::Esc | KeyCode::Char(',') => app.close_settings(),
+        KeyCode::Up | KeyCode::Char('k') => app.settings_prev_item(),
+        KeyCode::Down | KeyCode::Char('j') | KeyCode::Tab => app.settings_next_item(),
+        KeyCode::Enter | KeyCode::Char(' ') => app.toggle_selected_setting(),
+        KeyCode::Char('q') => app.should_quit = true,
         _ => {}
     }
 }

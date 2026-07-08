@@ -1,6 +1,6 @@
 //! ratatui 界面渲染：三区布局 + 顶部状态栏 + 底部帮助栏。
 
-use crate::app::{App, Focus, ReadState, TravelDocField};
+use crate::app::{App, Focus, ReadState, SettingsItem, TravelDocField};
 use crate::parse::ParsedCard;
 use ratatui::{
     prelude::*,
@@ -53,6 +53,9 @@ pub fn draw(f: &mut Frame, app: &App) {
     // 旅行证件输入态：在中央叠加输入弹窗。
     if app.is_traveldoc_input() {
         draw_traveldoc_popup(f, app, f.area());
+    }
+    if app.is_settings_open() {
+        draw_settings_popup(f, app, f.area());
     }
 }
 
@@ -136,6 +139,62 @@ fn draw_traveldoc_popup(f: &mut Frame, app: &App, area: Rect) {
     f.render_widget(p, popup);
 }
 
+/// 设置菜单弹窗。
+fn draw_settings_popup(f: &mut Frame, app: &App, area: Rect) {
+    let popup = centered_rect(56, 9, area);
+    f.render_widget(Clear, popup);
+
+    let block = Block::default()
+        .title(" 设置 ")
+        .borders(Borders::ALL)
+        .border_style(
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        );
+
+    let setting_line = |item: SettingsItem, label: &str, enabled: bool| -> Line<'static> {
+        let selected = app.selected_setting == item;
+        let marker = if selected { "▶ " } else { "  " };
+        let state = if enabled { "开" } else { "关" };
+        let style = if selected {
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(Color::Gray)
+        };
+        Line::from(vec![
+            Span::styled(marker, style),
+            Span::styled(format!("{label}: "), style),
+            Span::styled(
+                state,
+                Style::default().fg(if enabled {
+                    Color::Green
+                } else {
+                    Color::DarkGray
+                }),
+            ),
+        ])
+    };
+
+    let lines = vec![
+        Line::from(""),
+        setting_line(SettingsItem::AutoPoll, "自动读卡", app.auto_poll),
+        setting_line(SettingsItem::AutoSave, "自动保存", app.auto_save),
+        Line::from(""),
+        Line::from(Span::styled(
+            "  ↑↓ 选择   Enter/Space 切换   Esc 关闭",
+            Style::default().fg(Color::DarkGray),
+        )),
+    ];
+
+    let p = Paragraph::new(lines)
+        .block(block)
+        .wrap(Wrap { trim: false });
+    f.render_widget(p, popup);
+}
+
 /// 顶部状态栏：card_type / 卡片状态 / 消息。
 fn draw_status_bar(f: &mut Frame, app: &App, area: Rect) {
     let card_type = app
@@ -150,9 +209,14 @@ fn draw_status_bar(f: &mut Frame, app: &App, area: Rect) {
         ReadState::Error(_) => "错误",
     };
     let auto = if app.auto_poll {
-        "自动:开"
+        "读卡:开"
     } else {
-        "自动:关"
+        "读卡:关"
+    };
+    let auto_save = if app.auto_save {
+        "保存:开"
+    } else {
+        "保存:关"
     };
     let line = Line::from(vec![
         Span::styled(
@@ -164,7 +228,7 @@ fn draw_status_bar(f: &mut Frame, app: &App, area: Rect) {
             format!("[{status_txt}]"),
             Style::default().fg(status_color(&app.state)),
         ),
-        Span::raw(format!("  {auto}  ")),
+        Span::raw(format!("  {auto}  {auto_save}  ")),
         Span::styled(
             format!("| {}", app.message),
             Style::default().fg(Color::Yellow),
@@ -185,7 +249,7 @@ fn status_color(state: &ReadState) -> Color {
 
 /// 底部帮助栏。
 fn draw_help_bar(f: &mut Frame, _app: &App, area: Rect) {
-    let help = " q 退出 | r 读卡 | s 保存交通卡 | Enter 读卡/查看历史 | t 旅行证件 | Tab 切区 | ↑↓ 选择/滚动 | a 自动 ";
+    let help = " q 退出 | s 保存 | , 设置 | Enter 读卡/历史 | t 旅行证件 | Tab 切区 | ↑↓ 滚动 ";
     let p = Paragraph::new(help).style(Style::default().fg(Color::DarkGray));
     f.render_widget(p, area);
 }

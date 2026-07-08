@@ -2,6 +2,7 @@
 
 use crate::history::{self, SavedCard};
 use crate::parse::{self, ParsedResult};
+use crate::settings::{self, Settings};
 use std::time::{Duration, Instant};
 use tarot_backend::reader::{CardStatus, PcscManager};
 use tarot_backend::{read_from_reader, read_traveldoc_from_reader};
@@ -39,6 +40,13 @@ pub enum Focus {
     Readers,
     Parsed,
     Saved,
+}
+
+/// 设置菜单条目。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SettingsItem {
+    AutoPoll,
+    AutoSave,
 }
 
 /// 读卡状态机。
@@ -88,6 +96,12 @@ pub struct App {
     pub message: String,
     /// 自动轮询开关。
     pub auto_poll: bool,
+    /// 读取交通卡后自动保存记录。
+    pub auto_save: bool,
+    /// 设置菜单是否打开。
+    pub settings_open: bool,
+    /// 设置菜单当前选中项。
+    pub selected_setting: SettingsItem,
     /// 上次轮询时间。
     last_poll: Instant,
     /// 初始化错误（若 Pc/SC 不可用）。
@@ -101,6 +115,7 @@ pub struct App {
 impl App {
     /// 构造并尝试初始化 PC/SC。
     pub fn new() -> Self {
+        let settings = settings::load();
         let (mgr, readers, init_error) = match PcscManager::new() {
             Ok(m) => {
                 let readers = m.list_readers().unwrap_or_default();
@@ -131,7 +146,10 @@ impl App {
             history_view: None,
             should_quit: false,
             message: msg,
-            auto_poll: true,
+            auto_poll: settings.auto_poll,
+            auto_save: settings.auto_save,
+            settings_open: false,
+            selected_setting: SettingsItem::AutoPoll,
             last_poll: Instant::now(),
             init_error,
             traveldoc_input: None,
@@ -231,7 +249,14 @@ impl App {
                 self.state = ReadState::Done;
                 self.parsed_scroll = 0;
                 self.history_view = None;
-                self.message = if has_transit {
+                self.message = if has_transit && self.auto_save {
+                    self.save_current_transit();
+                    if self.message.starts_with("已保存") {
+                        format!("读取完成：{}", self.message)
+                    } else {
+                        self.message.clone()
+                    }
+                } else if has_transit {
                     "读取完成：按 s 保存交通卡记录".to_string()
                 } else {
                     "读取完成".to_string()
@@ -377,11 +402,71 @@ impl App {
     /// 切换自动轮询。
     pub fn toggle_auto(&mut self) {
         self.auto_poll = !self.auto_poll;
+        self.persist_settings();
         self.message = if self.auto_poll {
             "自动读卡：开".to_string()
         } else {
             "自动读卡：关".to_string()
         };
+    }
+
+    /// 切换自动保存交通卡记录。
+    pub fn toggle_auto_save(&mut self) {
+        self.auto_save = !self.auto_save;
+        self.persist_settings();
+        self.message = if self.auto_save {
+            "自动保存：开".to_string()
+        } else {
+            "自动保存：关".to_string()
+        };
+    }
+
+    /// 设置菜单是否打开。
+    pub fn is_settings_open(&self) -> bool {
+        self.settings_open
+    }
+
+    /// 打开设置菜单。
+    pub fn open_settings(&mut self) {
+        self.settings_open = true;
+        self.message = "设置：↑↓ 选择，Enter/Space 切换，Esc 关闭".to_string();
+    }
+
+    /// 关闭设置菜单。
+    pub fn close_settings(&mut self) {
+        self.settings_open = false;
+        self.message = "已关闭设置".to_string();
+    }
+
+    /// 设置菜单选择上一项。
+    pub fn settings_prev_item(&mut self) {
+        self.selected_setting = match self.selected_setting {
+            SettingsItem::AutoPoll => SettingsItem::AutoSave,
+            SettingsItem::AutoSave => SettingsItem::AutoPoll,
+        };
+    }
+
+    /// 设置菜单选择下一项。
+    pub fn settings_next_item(&mut self) {
+        self.settings_prev_item();
+    }
+
+    /// 切换设置菜单当前项。
+    pub fn toggle_selected_setting(&mut self) {
+        match self.selected_setting {
+            SettingsItem::AutoPoll => self.toggle_auto(),
+            SettingsItem::AutoSave => self.toggle_auto_save(),
+        }
+    }
+
+    fn persist_settings(&mut self) {
+        let settings = Settings {
+            auto_poll: self.auto_poll,
+            auto_save: self.auto_save,
+        };
+        if let Err(e) = settings::save(&settings) {
+            self.message = format!("保存设置失败: {e}");
+        }
     }
 
     /// 是否正处于旅行证件输入态。
