@@ -1,0 +1,387 @@
+//! ratatui 界面渲染：三区布局 + 顶部状态栏 + 底部帮助栏。
+
+use crate::app::{App, Focus, ReadState, TravelDocField};
+use crate::parse::ParsedCard;
+use tarot_backend::reader::CardStatus;
+use ratatui::{
+    prelude::*,
+    widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap},
+};
+
+/// 根据焦点返回边框样式。
+fn border_style(app: &App, focus: Focus) -> Style {
+    if app.focus == focus {
+        Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(Color::DarkGray)
+    }
+}
+
+/// 顶层绘制入口。
+pub fn draw(f: &mut Frame, app: &App) {
+    // 垂直分：状态栏(3) + 主体(min) + 帮助栏(1)
+    let outer = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(3),
+            Constraint::Min(5),
+            Constraint::Length(1),
+        ])
+        .split(f.area());
+
+    draw_status_bar(f, app, outer[0]);
+    draw_help_bar(f, app, outer[2]);
+
+    // 主体水平分：左列(读卡器 + 解析) | 右列(APDU)
+    let body = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(58), Constraint::Percentage(42)])
+        .split(outer[1]);
+
+    // 左列再纵向分：读卡器状态 | 解析数据
+    let left = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(7), Constraint::Min(5)])
+        .split(body[0]);
+
+    draw_readers(f, app, left[0]);
+    draw_parsed(f, app, left[1]);
+    draw_apdu(f, app, body[1]);
+
+    // 旅行证件输入态：在中央叠加输入弹窗。
+    if app.is_traveldoc_input() {
+        draw_traveldoc_popup(f, app, f.area());
+    }
+}
+
+/// 居中弹窗区域计算。
+fn centered_rect(width: u16, height: u16, area: Rect) -> Rect {
+    let x = area.x + (area.width.saturating_sub(width)) / 2;
+    let y = area.y + (area.height.saturating_sub(height)) / 2;
+    Rect {
+        x,
+        y,
+        width: width.min(area.width),
+        height: height.min(area.height),
+    }
+}
+
+/// 旅行证件 MRZ 输入弹窗。
+fn draw_traveldoc_popup(f: &mut Frame, app: &App, area: Rect) {
+    let popup = centered_rect(60, 11, area);
+    f.render_widget(Clear, popup);
+
+    let block = Block::default()
+        .title(" 旅行证件 · 输入 MRZ 三要素 ")
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD));
+
+    let input = app.traveldoc_input.as_ref();
+    let doc = input.map(|i| i.doc_number.as_str()).unwrap_or("");
+    let dob = input.map(|i| i.dob.as_str()).unwrap_or("");
+    let doe = input.map(|i| i.doe.as_str()).unwrap_or("");
+
+    let field_line = |label: &str, val: &str, active: bool| -> Line<'static> {
+        let cursor = if active { "_" } else { "" };
+        let val_style = if active {
+            Style::default().fg(Color::White).add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(Color::Gray)
+        };
+        let marker = if active { "▶ " } else { "  " };
+        Line::from(vec![
+            Span::styled(
+                format!("{marker}{label}: "),
+                Style::default().fg(if active { Color::Cyan } else { Color::DarkGray }),
+            ),
+            Span::styled(format!("{val}{cursor}"), val_style),
+        ])
+    };
+
+    let lines = vec![
+        Line::from(""),
+        field_line("证件号", doc, app.traveldoc_field == TravelDocField::DocNumber),
+        field_line("出生日期(YYMMDD)", dob, app.traveldoc_field == TravelDocField::Dob),
+        field_line("有效期(YYMMDD)", doe, app.traveldoc_field == TravelDocField::Doe),
+        Line::from(""),
+        Line::from(Span::styled(
+            "  Tab/↑↓ 切换字段   Enter 读取   Esc 取消",
+            Style::default().fg(Color::DarkGray),
+        )),
+    ];
+
+    let p = Paragraph::new(lines).block(block).wrap(Wrap { trim: false });
+    f.render_widget(p, popup);
+}
+
+/// 顶部状态栏：card_type / 卡片状态 / 消息。
+fn draw_status_bar(f: &mut Frame, app: &App, area: Rect) {
+    let card_type = app
+        .parsed
+        .as_ref()
+        .map(|p| p.card_type.as_str())
+        .unwrap_or("—");
+    let status_txt = match app.state {
+        ReadState::Idle => "空闲",
+        ReadState::CardPresent => "卡片在位",
+        ReadState::Done => "读取完成",
+        ReadState::Error(_) => "错误",
+    };
+    let auto = if app.auto_poll { "自动:开" } else { "自动:关" };
+    let line = Line::from(vec![
+        Span::styled(" tarot TUI ", Style::default().fg(Color::Black).bg(Color::Cyan)),
+        Span::raw(format!("  卡类型: {card_type}  ")),
+        Span::styled(
+            format!("[{status_txt}]"),
+            Style::default().fg(status_color(&app.state)),
+        ),
+        Span::raw(format!("  {auto}  ")),
+        Span::styled(format!("| {}", app.message), Style::default().fg(Color::Yellow)),
+    ]);
+    let p = Paragraph::new(line).block(Block::default().borders(Borders::ALL));
+    f.render_widget(p, area);
+}
+
+fn status_color(state: &ReadState) -> Color {
+    match state {
+        ReadState::Done => Color::Green,
+        ReadState::Error(_) => Color::Red,
+        ReadState::CardPresent => Color::Yellow,
+        ReadState::Idle => Color::Gray,
+    }
+}
+
+/// 底部帮助栏。
+fn draw_help_bar(f: &mut Frame, _app: &App, area: Rect) {
+    let help = " q 退出 | r/Enter 读卡 | t 旅行证件 | Tab 切区 | ↑↓ 选择/滚动 | PgUp/PgDn 翻页 | a 自动 ";
+    let p = Paragraph::new(help).style(Style::default().fg(Color::DarkGray));
+    f.render_widget(p, area);
+}
+
+/// 读卡器状态区。
+fn draw_readers(f: &mut Frame, app: &App, area: Rect) {
+    let block = Block::default()
+        .title(" 读卡器 ")
+        .borders(Borders::ALL)
+        .border_style(border_style(app, Focus::Readers));
+
+    if let Some(err) = &app.init_error {
+        let p = Paragraph::new(format!("PC/SC 不可用: {err}"))
+            .style(Style::default().fg(Color::Red))
+            .block(block)
+            .wrap(Wrap { trim: true });
+        f.render_widget(p, area);
+        return;
+    }
+
+    if app.readers.is_empty() {
+        let p = Paragraph::new("未检测到读卡器（插入后自动刷新）")
+            .style(Style::default().fg(Color::DarkGray))
+            .block(block);
+        f.render_widget(p, area);
+        return;
+    }
+
+    let items: Vec<ListItem> = app
+        .readers
+        .iter()
+        .enumerate()
+        .map(|(i, r)| {
+            let selected = i == app.selected_reader;
+            let marker = if selected { "▶ " } else { "  " };
+            let card = if selected {
+                match app.card_status {
+                    CardStatus::Present => " [卡片在位]",
+                    CardStatus::Empty => " [空]",
+                }
+            } else {
+                ""
+            };
+            let style = if selected {
+                Style::default().fg(Color::White).add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(Color::Gray)
+            };
+            ListItem::new(format!("{marker}{r}{card}")).style(style)
+        })
+        .collect();
+
+    let list = List::new(items).block(block);
+    f.render_widget(list, area);
+}
+
+/// 解析数据区：按子卡分区展示卡类型/卡号/余额/有效期/交易记录。
+fn draw_parsed(f: &mut Frame, app: &App, area: Rect) {
+    let block = Block::default()
+        .title(" 解析数据 (↑↓ 滚动) ")
+        .borders(Borders::ALL)
+        .border_style(border_style(app, Focus::Parsed));
+
+    let mut lines: Vec<Line> = Vec::new();
+
+    match &app.parsed {
+        None => {
+            lines.push(Line::from(Span::styled(
+                "尚无数据，放卡或按 Enter 读取。",
+                Style::default().fg(Color::DarkGray),
+            )));
+        }
+        Some(result) => {
+            if result.cards.len() > 1 {
+                lines.push(Line::from(Span::styled(
+                    format!("叠加卡：{} 张子卡", result.cards.len()),
+                    Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD),
+                )));
+                lines.push(Line::from(""));
+            }
+            for (i, card) in result.cards.iter().enumerate() {
+                render_card(&mut lines, i, card);
+                lines.push(Line::from(""));
+            }
+            // ATR 附在末尾。
+            lines.push(Line::from(Span::styled(
+                format!("ATR: {}", result.atr),
+                Style::default().fg(Color::DarkGray),
+            )));
+        }
+    }
+
+    let p = Paragraph::new(lines)
+        .block(block)
+        .wrap(Wrap { trim: false })
+        .scroll((app.parsed_scroll, 0));
+    f.render_widget(p, area);
+}
+
+/// 把一张子卡渲染为多行。
+fn render_card<'a>(lines: &mut Vec<Line<'a>>, idx: usize, card: &'a ParsedCard) {
+    lines.push(Line::from(vec![
+        Span::styled(
+            format!("● {}", card.name),
+            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(format!("  (#{})", idx + 1), Style::default().fg(Color::DarkGray)),
+    ]));
+
+    if let Some(num) = &card.number {
+        lines.push(kv_line("卡号", num));
+    }
+    if let Some(bal) = card.balance {
+        lines.push(Line::from(vec![
+            Span::styled("  余额: ", Style::default().fg(Color::Gray)),
+            Span::styled(
+                format!("{}{:.2}", card.currency, bal),
+                Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+            ),
+        ]));
+    }
+    for (k, v) in &card.fields {
+        lines.push(kv_line(k, v));
+    }
+
+    // 交易记录（交通联合已把对应行程信息合并进每条记录，一一对应）。
+    if !card.transactions.is_empty() {
+        lines.push(Line::from(Span::styled(
+            "  记录:",
+            Style::default().fg(Color::Yellow),
+        )));
+        for t in &card.transactions {
+            let seq = t.seq.map(|s| format!("#{s} ")).unwrap_or_default();
+            // 日期时间可能为空（非 BCD 字段），空时不显示。
+            let dt = match (t.date.is_empty(), t.time.is_empty()) {
+                (true, true) => String::new(),
+                (false, true) => t.date.clone(),
+                (true, false) => t.time.clone(),
+                (false, false) => format!("{} {}", t.date, t.time),
+            };
+            // 符号：负为红，正为绿，0 不加符号。
+            let (sign, color) = if t.amount < 0.0 {
+                ("", Color::Red)
+            } else if t.amount > 0.0 {
+                ("+", Color::Green)
+            } else {
+                ("", Color::Gray)
+            };
+            // 类型：优先显示行程的进出站类型 + 辅助（地铁/公交），否则用交易类型。
+            let kind_span = if !t.trip_kind.is_empty() {
+                format!("{} [{}] ", t.trip_kind, t.aux)
+            } else {
+                format!("{} ", t.kind)
+            };
+            let mut spans = vec![
+                Span::raw(format!("    {seq}{kind_span}")),
+                Span::styled(
+                    format!("{sign}{:.2}{} ", t.amount, card.currency),
+                    Style::default().fg(color),
+                ),
+            ];
+            // 交易后余额（若行程记录提供）。
+            if let Some(bal) = t.balance_after {
+                spans.push(Span::styled(
+                    format!("余{:.2}{} ", bal, card.currency),
+                    Style::default().fg(Color::Green),
+                ));
+            }
+            spans.push(Span::styled(dt, Style::default().fg(Color::DarkGray)));
+            lines.push(Line::from(spans));
+        }
+    }
+
+    for note in &card.notes {
+        lines.push(Line::from(Span::styled(
+            format!("  ⚠ {note}"),
+            Style::default().fg(Color::Red),
+        )));
+    }
+}
+
+/// 生成 "  key: value" 行。
+fn kv_line<'a>(k: &'a str, v: &'a str) -> Line<'a> {
+    Line::from(vec![
+        Span::styled(format!("  {k}: "), Style::default().fg(Color::Gray)),
+        Span::styled(v.to_string(), Style::default().fg(Color::White)),
+    ])
+}
+
+/// APDU 追踪区：滚动展示每条 tx/rx/note。
+fn draw_apdu(f: &mut Frame, app: &App, area: Rect) {
+    let history = app.apdu_history();
+    let block = Block::default()
+        .title(format!(" APDU 追踪 ({} 条) ", history.len()))
+        .borders(Borders::ALL)
+        .border_style(border_style(app, Focus::Apdu));
+
+    let mut lines: Vec<Line> = Vec::new();
+    if history.is_empty() {
+        lines.push(Line::from(Span::styled(
+            "无 APDU 记录。",
+            Style::default().fg(Color::DarkGray),
+        )));
+    }
+    for (i, t) in history.iter().enumerate() {
+        let mut head = format!("[{:>2}] ", i + 1);
+        if let Some(note) = &t.note {
+            head.push_str(note);
+        }
+        if !head.trim().is_empty() {
+            lines.push(Line::from(Span::styled(
+                head,
+                Style::default().fg(Color::DarkGray),
+            )));
+        }
+        lines.push(Line::from(vec![
+            Span::styled(">> ", Style::default().fg(Color::Blue)),
+            Span::raw(t.tx.clone()),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled("<< ", Style::default().fg(Color::Green)),
+            Span::raw(t.rx.clone()),
+        ]));
+    }
+
+    let p = Paragraph::new(lines)
+        .block(block)
+        .wrap(Wrap { trim: false })
+        .scroll((app.apdu_scroll, 0));
+    f.render_widget(p, area);
+}

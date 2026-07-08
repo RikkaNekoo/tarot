@@ -1,0 +1,34 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/core",
+    "crates/backend",
+    "crates/tui",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+
+[workspace.dependencies]
+# 共享内部 crate
+tarot-core = { path = "crates/core" }
+tarot-backend = { path = "crates/backend" }
+
+# 第三方
+pcsc = "2.8"
+thiserror = "1.0"
+anyhow = "1.0"
+hex = "0.4"
+ratatui = "0.28"
+crossterm = "0.28"
+encoding_rs = "0.8"
+clap = { version = "4.5", features = ["derive"] }
+# 护照 BAC / 安全消息通道所需密码学（RustCrypto）
+des = "0.8"
+cbc = "0.1"
+ecb = "0.1"
+cipher = "0.4"
+sha1 = "0.10"
+rand = "0.8"

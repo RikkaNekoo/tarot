@@ -1,0 +1,27 @@
+[package]
+name = "tarot-backend"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "tarot_backend"
+path = "src/lib.rs"
+
+[[bin]]
+name = "cli"
+path = "src/bin/cli.rs"
+
+[dependencies]
+tarot-core.workspace = true
+pcsc.workspace = true
+hex.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+des.workspace = true
+cbc.workspace = true
+ecb.workspace = true
+cipher.workspace = true
+sha1.workspace = true
+rand.workspace = true

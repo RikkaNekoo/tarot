@@ -1,0 +1,9 @@
+[package]
+name = "tarot-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+hex.workspace = true
