@@ -112,6 +112,7 @@ fn merge_trips_into_transactions(card: &mut ParsedCard, trips: Vec<Trip>) {
                 .map(|(a, b)| (a.to_string(), b.to_string()))
                 .unwrap_or_default();
             card.transactions.push(Transaction {
+                source: String::new(),
                 seq: None,
                 kind: "消费".to_string(),
                 amount: -trip.amount,

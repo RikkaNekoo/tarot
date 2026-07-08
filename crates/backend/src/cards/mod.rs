@@ -78,9 +78,9 @@ fn read_type_a<T: Transceiver>(tx: &mut T, data: &mut RawCardData) -> Result<()>
         data.sub_cards.push("EMV".to_string());
     }
 
-    // 多张卡则标记为叠加卡
+    // 多协议卡直接用命中的协议列表命名，避免额外的 CombinedCard 概念。
     if data.sub_cards.len() > 1 {
-        data.card_type = "CombinedCard".into();
+        data.card_type = data.sub_cards.join("+");
     } else if let Some(first) = data.sub_cards.first() {
         data.card_type = first.clone();
     }

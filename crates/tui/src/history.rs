@@ -123,7 +123,7 @@ pub fn transport_cards(parsed: &ParsedResult) -> impl Iterator<Item = &ParsedCar
 }
 
 pub fn is_transport(card: &ParsedCard) -> bool {
-    TRANSIT_NAMES.contains(&card.name.as_str())
+    TRANSIT_NAMES.contains(&card.name.as_str()) || !card.protocols.is_empty()
 }
 
 pub fn snapshot(card: &ParsedCard) -> SavedCard {
@@ -147,10 +147,15 @@ pub fn snapshot(card: &ParsedCard) -> SavedCard {
 }
 
 fn record_title(card: &ParsedCard) -> String {
-    match card.balance {
-        Some(balance) => format!("余额 {}{balance:.2}", card.currency),
-        None => format!("{} 条记录", card.transactions.len()),
+    if let Some(balance) = card.balance {
+        return format!("余额 {}{balance:.2}", card.currency);
     }
+    if let Some(protocol) = card.protocols.iter().find(|p| p.name == "交通联合") {
+        if let Some(balance) = protocol.balance {
+            return format!("余额 {}{balance:.2}", protocol.currency);
+        }
+    }
+    format!("{} 条记录", card.transactions.len())
 }
 
 fn record_lines(card: &ParsedCard) -> Vec<String> {
@@ -164,6 +169,22 @@ fn record_lines(card: &ParsedCard) -> Vec<String> {
     }
     for (k, v) in &card.fields {
         lines.push(format!("{k}: {v}"));
+    }
+    for protocol in &card.protocols {
+        if let Some(number) = &protocol.number {
+            lines.push(format!("{}卡号: {number}", protocol.name));
+        }
+        if protocol.name == "交通联合" {
+            if let Some(balance) = protocol.balance {
+                lines.push(format!("余额: {}{balance:.2}", protocol.currency));
+            }
+        }
+        for (k, v) in &protocol.fields {
+            lines.push(format!("{k}: {v}"));
+        }
+        for note in &protocol.notes {
+            lines.push(format!("提示: {note}"));
+        }
     }
     if !card.transactions.is_empty() {
         lines.push("记录:".to_string());
@@ -183,6 +204,9 @@ fn record_lines(card: &ParsedCard) -> Vec<String> {
             let mut line = format!("  {seq}{kind} {:+.2}{}", t.amount, card.currency);
             if let Some(balance) = t.balance_after {
                 line.push_str(&format!(" 余{balance:.2}{}", card.currency));
+            }
+            if !t.source.is_empty() {
+                line.push_str(&format!(" [{}]", t.source));
             }
             if !dt.is_empty() {
                 line.push_str(&format!(" {dt}"));

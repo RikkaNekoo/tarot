@@ -319,8 +319,10 @@ fn render_card<'a>(lines: &mut Vec<Line<'a>>, idx: usize, card: &'a ParsedCard) 
         ),
     ]));
 
-    if let Some(num) = &card.number {
-        lines.push(kv_line("卡号", num));
+    if card.protocols.is_empty() {
+        if let Some(num) = &card.number {
+            lines.push(kv_line("卡号", num));
+        }
     }
     if let Some(bal) = card.balance {
         lines.push(Line::from(vec![
@@ -335,6 +337,34 @@ fn render_card<'a>(lines: &mut Vec<Line<'a>>, idx: usize, card: &'a ParsedCard) 
     }
     for (k, v) in &card.fields {
         lines.push(kv_line(k, v));
+    }
+
+    for protocol in &card.protocols {
+        if let Some(num) = &protocol.number {
+            lines.push(kv_line(&format!("{}卡号", protocol.name), num));
+        }
+        if protocol.name == "交通联合" {
+            if let Some(bal) = protocol.balance {
+                lines.push(Line::from(vec![
+                    Span::styled("  余额: ", Style::default().fg(Color::Gray)),
+                    Span::styled(
+                        format!("{}{:.2}", protocol.currency, bal),
+                        Style::default()
+                            .fg(Color::Green)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                ]));
+            }
+        }
+        for (k, v) in &protocol.fields {
+            lines.push(kv_line(k, v));
+        }
+        for note in &protocol.notes {
+            lines.push(Line::from(Span::styled(
+                format!("  ! {note}"),
+                Style::default().fg(Color::Red),
+            )));
+        }
     }
 
     // 交易记录（交通联合已把对应行程信息合并进每条记录，一一对应）。
@@ -380,6 +410,12 @@ fn render_card<'a>(lines: &mut Vec<Line<'a>>, idx: usize, card: &'a ParsedCard) 
                     Style::default().fg(Color::Green),
                 ));
             }
+            if !t.source.is_empty() {
+                spans.push(Span::styled(
+                    format!("[{}] ", t.source),
+                    Style::default().fg(Color::DarkGray),
+                ));
+            }
             spans.push(Span::styled(dt, Style::default().fg(Color::DarkGray)));
             lines.push(Line::from(spans));
         }
@@ -394,7 +430,7 @@ fn render_card<'a>(lines: &mut Vec<Line<'a>>, idx: usize, card: &'a ParsedCard) 
 }
 
 /// 生成 "  key: value" 行。
-fn kv_line<'a>(k: &'a str, v: &'a str) -> Line<'a> {
+fn kv_line(k: &str, v: &str) -> Line<'static> {
     Line::from(vec![
         Span::styled(format!("  {k}: "), Style::default().fg(Color::Gray)),
         Span::styled(v.to_string(), Style::default().fg(Color::White)),
