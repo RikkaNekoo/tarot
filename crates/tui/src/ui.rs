@@ -2,16 +2,18 @@
 
 use crate::app::{App, Focus, ReadState, TravelDocField};
 use crate::parse::ParsedCard;
-use tarot_backend::reader::CardStatus;
 use ratatui::{
     prelude::*,
     widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap},
 };
+use tarot_backend::reader::CardStatus;
 
 /// 根据焦点返回边框样式。
 fn border_style(app: &App, focus: Focus) -> Style {
     if app.focus == focus {
-        Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD)
     } else {
         Style::default().fg(Color::DarkGray)
     }
@@ -32,7 +34,7 @@ pub fn draw(f: &mut Frame, app: &App) {
     draw_status_bar(f, app, outer[0]);
     draw_help_bar(f, app, outer[2]);
 
-    // 主体水平分：左列(读卡器 + 解析) | 右列(APDU)
+    // 主体水平分：左列(读卡器 + 解析/历史) | 右列(已保存卡片)
     let body = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(58), Constraint::Percentage(42)])
@@ -46,7 +48,7 @@ pub fn draw(f: &mut Frame, app: &App) {
 
     draw_readers(f, app, left[0]);
     draw_parsed(f, app, left[1]);
-    draw_apdu(f, app, body[1]);
+    draw_saved_cards(f, app, body[1]);
 
     // 旅行证件输入态：在中央叠加输入弹窗。
     if app.is_traveldoc_input() {
@@ -74,7 +76,11 @@ fn draw_traveldoc_popup(f: &mut Frame, app: &App, area: Rect) {
     let block = Block::default()
         .title(" 旅行证件 · 输入 MRZ 三要素 ")
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD));
+        .border_style(
+            Style::default()
+                .fg(Color::Magenta)
+                .add_modifier(Modifier::BOLD),
+        );
 
     let input = app.traveldoc_input.as_ref();
     let doc = input.map(|i| i.doc_number.as_str()).unwrap_or("");
@@ -84,7 +90,9 @@ fn draw_traveldoc_popup(f: &mut Frame, app: &App, area: Rect) {
     let field_line = |label: &str, val: &str, active: bool| -> Line<'static> {
         let cursor = if active { "_" } else { "" };
         let val_style = if active {
-            Style::default().fg(Color::White).add_modifier(Modifier::BOLD)
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD)
         } else {
             Style::default().fg(Color::Gray)
         };
@@ -100,9 +108,21 @@ fn draw_traveldoc_popup(f: &mut Frame, app: &App, area: Rect) {
 
     let lines = vec![
         Line::from(""),
-        field_line("证件号", doc, app.traveldoc_field == TravelDocField::DocNumber),
-        field_line("出生日期(YYMMDD)", dob, app.traveldoc_field == TravelDocField::Dob),
-        field_line("有效期(YYMMDD)", doe, app.traveldoc_field == TravelDocField::Doe),
+        field_line(
+            "证件号",
+            doc,
+            app.traveldoc_field == TravelDocField::DocNumber,
+        ),
+        field_line(
+            "出生日期(YYMMDD)",
+            dob,
+            app.traveldoc_field == TravelDocField::Dob,
+        ),
+        field_line(
+            "有效期(YYMMDD)",
+            doe,
+            app.traveldoc_field == TravelDocField::Doe,
+        ),
         Line::from(""),
         Line::from(Span::styled(
             "  Tab/↑↓ 切换字段   Enter 读取   Esc 取消",
@@ -110,7 +130,9 @@ fn draw_traveldoc_popup(f: &mut Frame, app: &App, area: Rect) {
         )),
     ];
 
-    let p = Paragraph::new(lines).block(block).wrap(Wrap { trim: false });
+    let p = Paragraph::new(lines)
+        .block(block)
+        .wrap(Wrap { trim: false });
     f.render_widget(p, popup);
 }
 
@@ -127,16 +149,26 @@ fn draw_status_bar(f: &mut Frame, app: &App, area: Rect) {
         ReadState::Done => "读取完成",
         ReadState::Error(_) => "错误",
     };
-    let auto = if app.auto_poll { "自动:开" } else { "自动:关" };
+    let auto = if app.auto_poll {
+        "自动:开"
+    } else {
+        "自动:关"
+    };
     let line = Line::from(vec![
-        Span::styled(" tarot TUI ", Style::default().fg(Color::Black).bg(Color::Cyan)),
+        Span::styled(
+            " tarot TUI ",
+            Style::default().fg(Color::Black).bg(Color::Cyan),
+        ),
         Span::raw(format!("  卡类型: {card_type}  ")),
         Span::styled(
             format!("[{status_txt}]"),
             Style::default().fg(status_color(&app.state)),
         ),
         Span::raw(format!("  {auto}  ")),
-        Span::styled(format!("| {}", app.message), Style::default().fg(Color::Yellow)),
+        Span::styled(
+            format!("| {}", app.message),
+            Style::default().fg(Color::Yellow),
+        ),
     ]);
     let p = Paragraph::new(line).block(Block::default().borders(Borders::ALL));
     f.render_widget(p, area);
@@ -153,7 +185,7 @@ fn status_color(state: &ReadState) -> Color {
 
 /// 底部帮助栏。
 fn draw_help_bar(f: &mut Frame, _app: &App, area: Rect) {
-    let help = " q 退出 | r/Enter 读卡 | t 旅行证件 | Tab 切区 | ↑↓ 选择/滚动 | PgUp/PgDn 翻页 | a 自动 ";
+    let help = " q 退出 | r 读卡 | s 保存交通卡 | Enter 读卡/查看历史 | t 旅行证件 | Tab 切区 | ↑↓ 选择/滚动 | a 自动 ";
     let p = Paragraph::new(help).style(Style::default().fg(Color::DarkGray));
     f.render_widget(p, area);
 }
@@ -198,7 +230,9 @@ fn draw_readers(f: &mut Frame, app: &App, area: Rect) {
                 ""
             };
             let style = if selected {
-                Style::default().fg(Color::White).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .fg(Color::White)
+                    .add_modifier(Modifier::BOLD)
             } else {
                 Style::default().fg(Color::Gray)
             };
@@ -212,12 +246,27 @@ fn draw_readers(f: &mut Frame, app: &App, area: Rect) {
 
 /// 解析数据区：按子卡分区展示卡类型/卡号/余额/有效期/交易记录。
 fn draw_parsed(f: &mut Frame, app: &App, area: Rect) {
+    let title = if app.history_view.is_some() {
+        " 历史记录 (↑↓ 滚动) "
+    } else {
+        " 解析数据 (↑↓ 滚动) "
+    };
     let block = Block::default()
-        .title(" 解析数据 (↑↓ 滚动) ")
+        .title(title)
         .borders(Borders::ALL)
         .border_style(border_style(app, Focus::Parsed));
 
     let mut lines: Vec<Line> = Vec::new();
+
+    if let Some(idx) = app.history_view {
+        draw_history_lines(app, idx, &mut lines);
+        let p = Paragraph::new(lines)
+            .block(block)
+            .wrap(Wrap { trim: false })
+            .scroll((app.parsed_scroll, 0));
+        f.render_widget(p, area);
+        return;
+    }
 
     match &app.parsed {
         None => {
@@ -230,7 +279,9 @@ fn draw_parsed(f: &mut Frame, app: &App, area: Rect) {
             if result.cards.len() > 1 {
                 lines.push(Line::from(Span::styled(
                     format!("叠加卡：{} 张子卡", result.cards.len()),
-                    Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(Color::Magenta)
+                        .add_modifier(Modifier::BOLD),
                 )));
                 lines.push(Line::from(""));
             }
@@ -258,9 +309,14 @@ fn render_card<'a>(lines: &mut Vec<Line<'a>>, idx: usize, card: &'a ParsedCard) 
     lines.push(Line::from(vec![
         Span::styled(
             format!("● {}", card.name),
-            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
         ),
-        Span::styled(format!("  (#{})", idx + 1), Style::default().fg(Color::DarkGray)),
+        Span::styled(
+            format!("  (#{})", idx + 1),
+            Style::default().fg(Color::DarkGray),
+        ),
     ]));
 
     if let Some(num) = &card.number {
@@ -271,7 +327,9 @@ fn render_card<'a>(lines: &mut Vec<Line<'a>>, idx: usize, card: &'a ParsedCard) 
             Span::styled("  余额: ", Style::default().fg(Color::Gray)),
             Span::styled(
                 format!("{}{:.2}", card.currency, bal),
-                Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
             ),
         ]));
     }
@@ -343,45 +401,80 @@ fn kv_line<'a>(k: &'a str, v: &'a str) -> Line<'a> {
     ])
 }
 
-/// APDU 追踪区：滚动展示每条 tx/rx/note。
-fn draw_apdu(f: &mut Frame, app: &App, area: Rect) {
-    let history = app.apdu_history();
+fn draw_history_lines<'a>(app: &'a App, idx: usize, lines: &mut Vec<Line<'a>>) {
+    let Some(card) = app.saved_cards.get(idx) else {
+        lines.push(Line::from(Span::styled(
+            "未找到已保存卡片。",
+            Style::default().fg(Color::DarkGray),
+        )));
+        return;
+    };
+    lines.push(Line::from(Span::styled(
+        card.display_name(),
+        Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD),
+    )));
+    lines.push(Line::from(format!("共 {} 条历史记录", card.records.len())));
+    lines.push(Line::from(""));
+
+    for (i, record) in card.records.iter().enumerate() {
+        lines.push(Line::from(vec![
+            Span::styled(
+                format!("记录 #{} ", i + 1),
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                format!("{}  @{}", record.title, record.timestamp),
+                Style::default().fg(Color::DarkGray),
+            ),
+        ]));
+        for line in &record.lines {
+            lines.push(Line::from(format!("  {line}")));
+        }
+        lines.push(Line::from(""));
+    }
+}
+
+/// 已保存卡片区：选择卡片后 Enter 在左侧查看历史。
+fn draw_saved_cards(f: &mut Frame, app: &App, area: Rect) {
     let block = Block::default()
-        .title(format!(" APDU 追踪 ({} 条) ", history.len()))
+        .title(format!(" 已保存卡片 ({} 张) ", app.saved_cards.len()))
         .borders(Borders::ALL)
-        .border_style(border_style(app, Focus::Apdu));
+        .border_style(border_style(app, Focus::Saved));
 
     let mut lines: Vec<Line> = Vec::new();
-    if history.is_empty() {
+    if app.saved_cards.is_empty() {
         lines.push(Line::from(Span::styled(
-            "无 APDU 记录。",
+            "暂无保存记录。刷交通卡后按 s 保存。",
             Style::default().fg(Color::DarkGray),
         )));
     }
-    for (i, t) in history.iter().enumerate() {
-        let mut head = format!("[{:>2}] ", i + 1);
-        if let Some(note) = &t.note {
-            head.push_str(note);
-        }
-        if !head.trim().is_empty() {
-            lines.push(Line::from(Span::styled(
-                head,
-                Style::default().fg(Color::DarkGray),
-            )));
-        }
+    for (i, card) in app.saved_cards.iter().enumerate() {
+        let selected = i == app.selected_saved;
+        let marker = if selected { "▶ " } else { "  " };
+        let style = if selected {
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(Color::Gray)
+        };
         lines.push(Line::from(vec![
-            Span::styled(">> ", Style::default().fg(Color::Blue)),
-            Span::raw(t.tx.clone()),
+            Span::styled(marker, style),
+            Span::styled(card.display_name(), style),
         ]));
-        lines.push(Line::from(vec![
-            Span::styled("<< ", Style::default().fg(Color::Green)),
-            Span::raw(t.rx.clone()),
-        ]));
+        lines.push(Line::from(Span::styled(
+            format!("    {} 条记录", card.records.len()),
+            Style::default().fg(Color::DarkGray),
+        )));
     }
 
     let p = Paragraph::new(lines)
         .block(block)
         .wrap(Wrap { trim: false })
-        .scroll((app.apdu_scroll, 0));
+        .scroll((app.saved_scroll, 0));
     f.render_widget(p, area);
 }

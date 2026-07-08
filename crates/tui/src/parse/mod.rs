@@ -61,7 +61,7 @@ pub fn parse(raw: &RawCardData) -> ParsedResult {
         if raw.raw_fields.is_empty() {
             c.notes.push("未抓到任何数据".into());
         } else {
-            c.notes.push("有原始数据但无匹配解析器，见 APDU 追踪".into());
+            c.notes.push("有原始数据但无匹配解析器".into());
         }
         result.cards.push(c);
     }

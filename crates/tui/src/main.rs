@@ -1,9 +1,10 @@
 //! tarot TUI 入口：初始化终端、运行事件循环、恢复终端。
 //!
-//! 三区布局（读卡器状态 / 解析数据 / APDU 追踪），支持轮询自动检测放卡/取卡。
+//! 三区布局（读卡器状态 / 解析数据 / 已保存卡片），支持轮询自动检测放卡/取卡。
 //! 后端只抓原始字节，所有语义解析在 `parse` 模块完成。
 
 mod app;
+mod history;
 mod parse;
 mod ui;
 
@@ -81,7 +82,9 @@ fn handle_key(app: &mut App, code: KeyCode) {
     match code {
         KeyCode::Char('q') | KeyCode::Esc => app.should_quit = true,
         KeyCode::Char('t') => app.start_traveldoc_input(),
-        KeyCode::Char('r') | KeyCode::Enter => app.read_now(),
+        KeyCode::Char('r') => app.read_now(),
+        KeyCode::Enter => app.on_enter(),
+        KeyCode::Char('s') => app.save_current_transit(),
         KeyCode::Char('a') => app.toggle_auto(),
         KeyCode::Tab => app.cycle_focus(),
         KeyCode::Up | KeyCode::Char('k') => app.on_up(),
@@ -91,7 +94,7 @@ fn handle_key(app: &mut App, code: KeyCode) {
             app.focus = app::Focus::Readers;
         }
         KeyCode::Right => {
-            app.focus = app::Focus::Apdu;
+            app.focus = app::Focus::Saved;
         }
         KeyCode::PageUp => app.on_page(true),
         KeyCode::PageDown => app.on_page(false),

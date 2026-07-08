@@ -1,10 +1,11 @@
 //! TUI 应用状态：读卡器管理、卡片状态轮询、读卡结果与解析、滚动/焦点。
 
+use crate::history::{self, SavedCard};
 use crate::parse::{self, ParsedResult};
+use std::time::{Duration, Instant};
 use tarot_backend::reader::{CardStatus, PcscManager};
 use tarot_backend::{read_from_reader, read_traveldoc_from_reader};
-use tarot_core::{ApduTrace, Error, PassportKey, RawCardData};
-use std::time::{Duration, Instant};
+use tarot_core::{Error, PassportKey, RawCardData};
 
 /// 旅行证件 MRZ 输入的三个字段。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -37,7 +38,7 @@ impl TravelDocInput {
 pub enum Focus {
     Readers,
     Parsed,
-    Apdu,
+    Saved,
 }
 
 /// 读卡状态机。
@@ -73,8 +74,14 @@ pub struct App {
     pub focus: Focus,
     /// 解析区滚动偏移。
     pub parsed_scroll: u16,
-    /// APDU 区滚动偏移。
-    pub apdu_scroll: u16,
+    /// 已保存卡片列表滚动偏移。
+    pub saved_scroll: u16,
+    /// 当前选中的已保存卡片索引。
+    pub selected_saved: usize,
+    /// 已保存的交通卡历史。
+    pub saved_cards: Vec<SavedCard>,
+    /// 当前展示的历史卡片索引。
+    pub history_view: Option<usize>,
     /// 是否请求退出。
     pub should_quit: bool,
     /// 顶部状态栏消息。
@@ -118,7 +125,10 @@ impl App {
             parsed: None,
             focus: Focus::Readers,
             parsed_scroll: 0,
-            apdu_scroll: 0,
+            saved_scroll: 0,
+            selected_saved: 0,
+            saved_cards: history::load(),
+            history_view: None,
             should_quit: false,
             message: msg,
             auto_poll: true,
@@ -132,11 +142,6 @@ impl App {
     /// 当前选中的读卡器名。
     pub fn current_reader(&self) -> Option<&str> {
         self.readers.get(self.selected_reader).map(|s| s.as_str())
-    }
-
-    /// APDU 历史（借用）。
-    pub fn apdu_history(&self) -> &[ApduTrace] {
-        self.raw.as_ref().map(|r| r.apdu_history.as_slice()).unwrap_or(&[])
     }
 
     /// 刷新读卡器列表（热插拔时）。
@@ -220,12 +225,17 @@ impl App {
         match read_from_reader(mgr, &reader) {
             Ok(data) => {
                 let parsed = parse::parse(&data);
+                let has_transit = history::transport_cards(&parsed).next().is_some();
                 self.parsed = Some(parsed);
                 self.raw = Some(data);
                 self.state = ReadState::Done;
                 self.parsed_scroll = 0;
-                self.apdu_scroll = 0;
-                self.message = "读取完成".to_string();
+                self.history_view = None;
+                self.message = if has_transit {
+                    "读取完成：按 s 保存交通卡记录".to_string()
+                } else {
+                    "读取完成".to_string()
+                };
             }
             Err(Error::NoCard) => {
                 self.state = ReadState::Idle;
@@ -243,8 +253,8 @@ impl App {
     pub fn cycle_focus(&mut self) {
         self.focus = match self.focus {
             Focus::Readers => Focus::Parsed,
-            Focus::Parsed => Focus::Apdu,
-            Focus::Apdu => Focus::Readers,
+            Focus::Parsed => Focus::Saved,
+            Focus::Saved => Focus::Readers,
         };
     }
 
@@ -258,7 +268,12 @@ impl App {
                 }
             }
             Focus::Parsed => self.parsed_scroll = self.parsed_scroll.saturating_sub(1),
-            Focus::Apdu => self.apdu_scroll = self.apdu_scroll.saturating_sub(1),
+            Focus::Saved => {
+                if self.selected_saved > 0 {
+                    self.selected_saved -= 1;
+                    self.saved_scroll = self.saved_scroll.saturating_sub(1);
+                }
+            }
         }
     }
 
@@ -272,7 +287,12 @@ impl App {
                 }
             }
             Focus::Parsed => self.parsed_scroll = self.parsed_scroll.saturating_add(1),
-            Focus::Apdu => self.apdu_scroll = self.apdu_scroll.saturating_add(1),
+            Focus::Saved => {
+                if self.selected_saved + 1 < self.saved_cards.len() {
+                    self.selected_saved += 1;
+                    self.saved_scroll = self.saved_scroll.saturating_add(1);
+                }
+            }
         }
     }
 
@@ -281,7 +301,7 @@ impl App {
         let delta = 10;
         let target = match self.focus {
             Focus::Parsed => &mut self.parsed_scroll,
-            Focus::Apdu => &mut self.apdu_scroll,
+            Focus::Saved => &mut self.saved_scroll,
             Focus::Readers => return,
         };
         *target = if up {
@@ -289,6 +309,69 @@ impl App {
         } else {
             target.saturating_add(delta)
         };
+    }
+
+    /// Enter：保存卡片列表聚焦时查看历史，否则立即读卡。
+    pub fn on_enter(&mut self) {
+        if self.focus == Focus::Saved {
+            self.open_selected_saved();
+        } else {
+            self.read_now();
+        }
+    }
+
+    /// 保存当前读取结果中的所有交通卡。
+    pub fn save_current_transit(&mut self) {
+        let Some(parsed) = &self.parsed else {
+            self.message = "尚无可保存的读卡结果".to_string();
+            return;
+        };
+
+        let mut count = 0usize;
+        for card in history::transport_cards(parsed) {
+            let mut snapshot = history::snapshot(card);
+            let record = snapshot.records.pop();
+            let Some(record) = record else {
+                continue;
+            };
+            if let Some(idx) = self.saved_cards.iter().position(|c| c.key == snapshot.key) {
+                let existing = &mut self.saved_cards[idx];
+                existing.name = snapshot.name;
+                existing.number = snapshot.number;
+                existing.currency = snapshot.currency;
+                existing.records.insert(0, record);
+                self.selected_saved = idx;
+            } else {
+                snapshot.records.push(record);
+                self.saved_cards.push(snapshot);
+                self.selected_saved = self.saved_cards.len().saturating_sub(1);
+            }
+            count += 1;
+        }
+
+        if count == 0 {
+            self.message = "当前卡片不是可保存的交通卡".to_string();
+            return;
+        }
+        match history::save(&self.saved_cards) {
+            Ok(()) => self.message = format!("已保存 {count} 张交通卡记录"),
+            Err(e) => self.message = format!("保存失败: {e}"),
+        }
+    }
+
+    /// 打开右侧选中的已保存卡片历史。
+    pub fn open_selected_saved(&mut self) {
+        if self.saved_cards.is_empty() {
+            self.message = "暂无已保存卡片".to_string();
+            return;
+        }
+        self.selected_saved = self.selected_saved.min(self.saved_cards.len() - 1);
+        self.history_view = Some(self.selected_saved);
+        self.parsed_scroll = 0;
+        self.message = format!(
+            "已打开 {} 的历史记录",
+            self.saved_cards[self.selected_saved].display_name()
+        );
     }
 
     /// 切换自动轮询。
@@ -386,7 +469,7 @@ impl App {
                 self.raw = Some(data);
                 self.state = ReadState::Done;
                 self.parsed_scroll = 0;
-                self.apdu_scroll = 0;
+                self.history_view = None;
                 self.traveldoc_input = None;
                 // 同步卡片状态为在位，避免 tick 恢复轮询后误判为“新放卡”
                 // 而触发普通 read_now() 覆盖掉旅行证件结果。
