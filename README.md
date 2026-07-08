@@ -40,7 +40,9 @@ cargo run -p tarot-backend --bin cli -- read
 cargo run -p tarot-tui
 ```
 
-放上卡片即自动识别并展示解析结果与 APDU 追踪。读取旅行证件时需先输入 MRZ 三要素（证件号、出生日期、有效期）。
+放上卡片即自动识别并展示解析结果与 APDU 追踪。读取旅行证件时需先输入 MRZ 三要素（证件号、出生日期、有效期）。  
+持久化配置文件与交通卡历史记录分别保存在 `$HOME/.config/tarot/tui-settings.conf` 与 `$HOME/.local/share/tarot/tui-history.tsv`  
+当 `$HOME` 不存在时则保存在运行目录下
 
 ### CLI
 
