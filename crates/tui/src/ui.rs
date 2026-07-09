@@ -383,44 +383,35 @@ fn render_card<'a>(lines: &mut Vec<Line<'a>>, idx: usize, card: &'a ParsedCard) 
         ),
     ]));
 
-    if card.protocols.is_empty() {
-        if let Some(num) = &card.number {
-            lines.push(kv_line("卡号", num));
-        }
+    if let Some(num) = &card.number {
+        lines.push(kv_line("卡号", num));
     }
-    if let Some(bal) = card.balance {
-        lines.push(Line::from(vec![
-            Span::styled("  余额: ", Style::default().fg(Color::Gray)),
-            Span::styled(
-                format!("{}{:.2}", card.currency, bal),
-                Style::default()
-                    .fg(Color::Green)
-                    .add_modifier(Modifier::BOLD),
-            ),
-        ]));
-    }
+    let mut balance = card.balance.map(|bal| (card.currency.as_str(), bal));
+    let mut monthly_total = None;
     for (k, v) in &card.fields {
+        if k == "广州优惠金额累计" {
+            monthly_total = Some(v.as_str());
+            continue;
+        }
         lines.push(kv_line(k, v));
     }
 
     for protocol in &card.protocols {
-        if let Some(num) = &protocol.number {
-            lines.push(kv_line(&format!("{}卡号", protocol.name), num));
+        if protocol.name != "交通联合" {
+            if let Some(num) = &protocol.number {
+                lines.push(kv_line(&format!("{}卡号", protocol.name), num));
+            }
         }
-        if protocol.name == "交通联合" {
+        if protocol.name == "交通联合" && balance.is_none() {
             if let Some(bal) = protocol.balance {
-                lines.push(Line::from(vec![
-                    Span::styled("  余额: ", Style::default().fg(Color::Gray)),
-                    Span::styled(
-                        format!("{}{:.2}", protocol.currency, bal),
-                        Style::default()
-                            .fg(Color::Green)
-                            .add_modifier(Modifier::BOLD),
-                    ),
-                ]));
+                balance = Some((protocol.currency.as_str(), bal));
             }
         }
         for (k, v) in &protocol.fields {
+            if k == "广州优惠金额累计" {
+                monthly_total = Some(v.as_str());
+                continue;
+            }
             lines.push(kv_line(k, v));
         }
         for note in &protocol.notes {
@@ -431,6 +422,21 @@ fn render_card<'a>(lines: &mut Vec<Line<'a>>, idx: usize, card: &'a ParsedCard) 
         }
     }
 
+    if let Some((currency, bal)) = balance {
+        lines.push(Line::from(vec![
+            Span::styled("  余额: ", Style::default().fg(Color::Gray)),
+            Span::styled(
+                format!("{currency}{bal:.2}"),
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        ]));
+    }
+    if let Some(total) = monthly_total {
+        lines.push(kv_line("广州优惠金额累计", total));
+    }
+
     // 交易记录（交通联合已把对应行程信息合并进每条记录，一一对应）。
     if !card.transactions.is_empty() {
         lines.push(Line::from(Span::styled(
@@ -438,7 +444,6 @@ fn render_card<'a>(lines: &mut Vec<Line<'a>>, idx: usize, card: &'a ParsedCard) 
             Style::default().fg(Color::Yellow),
         )));
         for t in &card.transactions {
-            let seq = t.seq.map(|s| format!("#{s} ")).unwrap_or_default();
             // 日期时间可能为空（非 BCD 字段），空时不显示。
             let dt = match (t.date.is_empty(), t.time.is_empty()) {
                 (true, true) => String::new(),
@@ -461,7 +466,7 @@ fn render_card<'a>(lines: &mut Vec<Line<'a>>, idx: usize, card: &'a ParsedCard) 
                 format!("{} ", t.kind)
             };
             let mut spans = vec![
-                Span::raw(format!("    {seq}{kind_span}")),
+                Span::raw(format!("    {kind_span}")),
                 Span::styled(
                     format!("{sign}{:.2}{} ", t.amount, card.currency),
                     Style::default().fg(color),
@@ -515,13 +520,19 @@ fn draw_history_lines<'a>(app: &'a App, idx: usize, lines: &mut Vec<Line<'a>>) {
             .fg(Color::Cyan)
             .add_modifier(Modifier::BOLD),
     )));
-    lines.push(Line::from(format!("共 {} 条历史记录", card.records.len())));
+    let total = card
+        .records
+        .iter()
+        .flat_map(|record| record.lines.iter())
+        .filter(|line| line.starts_with("  "))
+        .count();
+    lines.push(Line::from(format!("共 {total} 条记录")));
     lines.push(Line::from(""));
 
-    for (i, record) in card.records.iter().enumerate() {
+    for record in &card.records {
         lines.push(Line::from(vec![
             Span::styled(
-                format!("记录 #{} ", i + 1),
+                "记录 ",
                 Style::default()
                     .fg(Color::Yellow)
                     .add_modifier(Modifier::BOLD),

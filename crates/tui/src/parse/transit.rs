@@ -26,6 +26,10 @@ pub fn display_name(name: &str) -> &'static str {
         "TUnion" => "交通联合",
         "MacauPass" => "澳门通",
         "BMAC" => "北京一卡通",
+        "MotBmac" => "交通部城市交通卡",
+        "ChinaTransit" => "国内交通卡",
+        "SuXin" => "苏州市民卡",
+        "SzpkZyy" => "深圳专用票卡",
         "TMoney" => "T-Money",
         _ => "交通卡",
     }
@@ -47,6 +51,10 @@ pub fn parse(name: &str, raw: &RawCardData) -> ParsedCard {
 
     // 交易记录。
     parse_transactions(name, raw, &mut card);
+
+    if name == "LingnanPass" {
+        parse_lingnan_monthly(raw, &mut card);
+    }
 
     // 交通联合额外的省市/类型（17 号文件）。
     if name == "TUnion" {
@@ -196,6 +204,9 @@ fn parse_card_number(name: &str, raw: &RawCardData, card: &mut ParsedCard) {
         "LingnanPass" => (raw.get("LingnanPass_file15"), (22, 32), (0, 0), (0, 0)),
         "CityUnion" => (raw.get("CityUnion_file15"), (24, 40), (40, 48), (48, 56)),
         "TUnion" => (raw.get("TUnion_file15"), (20, 40), (0, 0), (0, 0)),
+        "MotBmac" | "ChinaTransit" | "SuXin" | "SzpkZyy" => {
+            (raw.get(&format!("{name}_file15")), (20, 40), (0, 0), (0, 0))
+        }
         "MacauPass" => (raw.get("MacauPass_file15"), (70, 80), (0, 0), (0, 0)),
         "BMAC" => (raw.get("BMAC_file04"), (0, 16), (48, 56), (56, 64)),
         _ => (None, (0, 0), (0, 0), (0, 0)),
@@ -255,10 +266,36 @@ fn parse_balance(name: &str, raw: &RawCardData, card: &mut ParsedCard) {
     }
     if name == "MacauPass" {
         // 澳门通换算：balance*10 - 1000（单位分）。
-        let raw_val = be_uint(&bytes, 0, 4) % 0x8000_0000;
+        let balance = balance_bytes(&bytes);
+        let raw_val = be_uint(balance, 0, 4.min(balance.len())) % 0x8000_0000;
         card.balance = Some((raw_val as f64 * 10.0 - 1000.0) / 100.0);
     } else {
-        card.balance = Some(pboc_balance_yuan(&bytes));
+        card.balance = Some(pboc_balance_yuan(balance_bytes(&bytes)));
+    }
+}
+
+fn balance_bytes(bytes: &[u8]) -> &[u8] {
+    if bytes.len() >= 5 {
+        &bytes[1..]
+    } else {
+        bytes
+    }
+}
+
+fn parse_lingnan_monthly(raw: &RawCardData, card: &mut ParsedCard) {
+    if let Some(hex) = raw.get("LingnanPass_guangzhou_monthly") {
+        let bytes = hex_to_bytes(hex);
+        if bytes.len() >= 14 && bytes[3] != 0 {
+            let year = bytes[3];
+            let month = bytes[4];
+            let amount = be_uint(&bytes, 12, 14) as f64 / 100.0;
+            if (1..=12).contains(&month) {
+                card.add_field(
+                    "广州优惠金额累计",
+                    format!("20{year:02X}-{month:02X} {}{amount:.2}", card.currency),
+                );
+            }
+        }
     }
 }
 
@@ -266,7 +303,7 @@ fn parse_balance(name: &str, raw: &RawCardData, card: &mut ParsedCard) {
 fn tti_name(tti: &str) -> &'static str {
     match tti {
         "06" => "消费",
-        "02" => "圈存(充值)",
+        "02" => "充值",
         "09" => "复合消费",
         _ => "其他",
     }
@@ -288,7 +325,7 @@ fn fmt_month_day4(hex4: &str) -> String {
 
 /// 解析交易记录（每条原始 23 字节）。偏移见文档（hex 位）。
 fn parse_transactions(name: &str, raw: &RawCardData, card: &mut ParsedCard) {
-    for n in 1u8..=10 {
+    for n in 1u8..=31 {
         let key = format!("{name}_trans_{n}");
         let Some(hex) = raw.get(&key) else {
             continue;
@@ -328,5 +365,26 @@ fn parse_transactions(name: &str, raw: &RawCardData, card: &mut ParsedCard) {
         // 时间 40..46（hex 位）=> 字节 20..23
         t.time = fmt_time6(slice(hex, 40, 46));
         card.transactions.push(t);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_lingnan_monthly_total() {
+        let mut raw = RawCardData::default();
+        raw.put(
+            "LingnanPass_guangzhou_monthly",
+            "0000002407000000000000001388",
+        );
+
+        let card = parse("LingnanPass", &raw);
+
+        assert!(card
+            .fields
+            .iter()
+            .any(|(key, value)| key == "广州优惠金额累计" && value == "2024-07 ¥50.00"));
     }
 }

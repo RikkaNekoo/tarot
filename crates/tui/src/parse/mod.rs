@@ -97,7 +97,11 @@ fn fold_multi_transit_cards(cards: &mut Vec<ParsedCard>) {
             .collect::<Vec<_>>()
             .join("+"),
     );
-    combined.number = transit_cards.iter().find_map(|card| card.number.clone());
+    combined.number = transit_cards
+        .iter()
+        .find(|card| card.name == "交通联合")
+        .and_then(|card| card.number.clone())
+        .or_else(|| transit_cards.iter().find_map(|card| card.number.clone()));
     combined.currency = transit_cards
         .first()
         .map(|card| card.currency.clone())
@@ -289,7 +293,7 @@ fn parse_sub(sub: &str, raw: &RawCardData) -> ParsedCard {
         "MifareDESFire" => mifare::parse_desfire(raw),
         "TMoney" => tmoney::parse(raw),
         "ShenzhenTong" | "WuhanTong" | "LingnanPass" | "CityUnion" | "TUnion" | "MacauPass"
-        | "BMAC" => transit::parse(sub, raw),
+        | "BMAC" | "MotBmac" | "ChinaTransit" | "SuXin" | "SzpkZyy" => transit::parse(sub, raw),
         other => {
             // EMV 品牌型 card_type（如 "EMV:Visa"）也归 EMV。
             if raw.card_type.starts_with("EMV") {

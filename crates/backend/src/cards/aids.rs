@@ -40,6 +40,31 @@ pub const TYPE_A_CHAIN: &[AidEntry] = &[
         key: "macau_fci",
     },
     AidEntry {
+        name: "MotBmac",
+        aid: &[
+            0x91, 0x56, 0x00, 0x00, 0x14, 0x4D, 0x4F, 0x54, 0x2E, 0x42, 0x4D, 0x41, 0x43, 0x30,
+            0x30, 0x31,
+        ],
+        key: "mot_bmac_fci",
+    },
+    AidEntry {
+        name: "ChinaTransit",
+        aid: &[
+            0xD1, 0x56, 0x00, 0x00, 0x15, 0xB9, 0xAB, 0xB9, 0xB2, 0xD3, 0xA6, 0xD3, 0xC3,
+        ],
+        key: "china_transit_fci",
+    },
+    AidEntry {
+        name: "SuXin",
+        aid: b"SUXIN.DDF01",
+        key: "suxin_fci",
+    },
+    AidEntry {
+        name: "SzpkZyy",
+        aid: b"SZPK_ZYY",
+        key: "szpk_zyy_fci",
+    },
+    AidEntry {
         name: "CityUnion",
         aid: &[0xA0, 0x00, 0x00, 0x00, 0x03, 0x86, 0x98, 0x07, 0x01],
         key: "cityunion_fci",

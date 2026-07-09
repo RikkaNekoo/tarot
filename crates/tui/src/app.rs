@@ -369,10 +369,13 @@ impl App {
                 new_records += history::append_new_transactions(existing, card);
                 self.selected_saved = idx;
             } else {
+                if card.transactions.is_empty() {
+                    continue;
+                }
                 snapshot.records.push(record);
                 self.saved_cards.push(snapshot);
                 self.selected_saved = self.saved_cards.len().saturating_sub(1);
-                new_records += card.transactions.len().max(1);
+                new_records += card.transactions.len();
             }
         }
 

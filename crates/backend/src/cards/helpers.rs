@@ -13,7 +13,11 @@ pub fn select_aid<T: Transceiver>(
     key: &str,
 ) -> Result<bool> {
     let apdu = Apdu::case4(0x00, 0xA4, 0x04, 0x00, aid, 0x00);
-    let resp = tx.transceive(&apdu)?;
+    let mut resp = tx.transceive(&apdu)?;
+    if !resp.is_ok() {
+        let apdu = Apdu::case3(0x00, 0xA4, 0x04, 0x00, aid);
+        resp = tx.transceive(&apdu)?;
+    }
     if resp.is_ok() {
         data.put(key, resp.data_hex());
         Ok(true)

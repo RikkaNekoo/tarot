@@ -156,26 +156,11 @@ pub fn append_new_transactions(existing: &mut SavedCard, card: &ParsedCard) -> u
     }
 
     let count = new_lines.len();
-    existing.records.insert(
-        0,
-        SavedRecord {
-            timestamp: now_secs(),
-            title: format!("新增 {count} 条记录"),
-            lines: new_lines,
-        },
-    );
+    append_transaction_lines(existing, new_lines);
     count
 }
 
 fn record_title(card: &ParsedCard) -> String {
-    if let Some(balance) = card.balance {
-        return format!("余额 {}{balance:.2}", card.currency);
-    }
-    if let Some(protocol) = card.protocols.iter().find(|p| p.name == "交通联合") {
-        if let Some(balance) = protocol.balance {
-            return format!("余额 {}{balance:.2}", protocol.currency);
-        }
-    }
     format!("{} 条记录", card.transactions.len())
 }
 
@@ -185,22 +170,22 @@ fn record_lines(card: &ParsedCard) -> Vec<String> {
     if let Some(number) = &card.number {
         lines.push(format!("卡号: {number}"));
     }
-    if let Some(balance) = card.balance {
-        lines.push(format!("余额: {}{balance:.2}", card.currency));
-    }
     for (k, v) in &card.fields {
+        if k == "广州优惠金额累计" {
+            continue;
+        }
         lines.push(format!("{k}: {v}"));
     }
     for protocol in &card.protocols {
-        if let Some(number) = &protocol.number {
-            lines.push(format!("{}卡号: {number}", protocol.name));
-        }
-        if protocol.name == "交通联合" {
-            if let Some(balance) = protocol.balance {
-                lines.push(format!("余额: {}{balance:.2}", protocol.currency));
+        if protocol.name != "交通联合" {
+            if let Some(number) = &protocol.number {
+                lines.push(format!("{}卡号: {number}", protocol.name));
             }
         }
         for (k, v) in &protocol.fields {
+            if k == "广州优惠金额累计" {
+                continue;
+            }
             lines.push(format!("{k}: {v}"));
         }
         for note in &protocol.notes {
@@ -221,7 +206,6 @@ fn transaction_lines(card: &ParsedCard) -> Vec<String> {
     card.transactions
         .iter()
         .map(|t| {
-            let seq = t.seq.map(|s| format!("#{s} ")).unwrap_or_default();
             let dt = match (t.date.is_empty(), t.time.is_empty()) {
                 (true, true) => String::new(),
                 (false, true) => t.date.clone(),
@@ -233,10 +217,7 @@ fn transaction_lines(card: &ParsedCard) -> Vec<String> {
             } else {
                 format!("{} [{}]", t.trip_kind, t.aux)
             };
-            let mut line = format!("  {seq}{kind} {:+.2}{}", t.amount, card.currency);
-            if let Some(balance) = t.balance_after {
-                line.push_str(&format!(" 余{balance:.2}{}", card.currency));
-            }
+            let mut line = format!("  {kind} {:+.2}{}", t.amount, card.currency);
             if !t.source.is_empty() {
                 line.push_str(&format!(" [{}]", t.source));
             }
@@ -252,6 +233,61 @@ fn has_transaction_line(card: &SavedCard, line: &str) -> bool {
     card.records
         .iter()
         .any(|record| record.lines.iter().any(|saved| saved == line))
+}
+
+fn append_transaction_lines(card: &mut SavedCard, lines: Vec<String>) {
+    merge_records(card);
+
+    if card.records.is_empty() {
+        card.records.push(SavedRecord {
+            timestamp: now_secs(),
+            title: "0 条记录".to_string(),
+            lines: vec!["记录:".to_string()],
+        });
+    }
+
+    let record = &mut card.records[0];
+    record.timestamp = now_secs();
+    if !record.lines.iter().any(|line| line == "记录:") {
+        record.lines.push("记录:".to_string());
+    }
+    let insert_at = record
+        .lines
+        .iter()
+        .position(|line| line.starts_with("提示:"))
+        .unwrap_or(record.lines.len());
+    record.lines.splice(insert_at..insert_at, lines);
+    record.title = format!("{} 条记录", transaction_line_count(record));
+}
+
+fn merge_records(card: &mut SavedCard) {
+    if card.records.len() <= 1 {
+        return;
+    }
+
+    let mut merged = card.records.pop().unwrap_or_default();
+    if !merged.lines.iter().any(|line| line == "记录:") {
+        merged.lines.push("记录:".to_string());
+    }
+
+    let mut lines = Vec::new();
+    for record in card.records.drain(..) {
+        for line in record.lines {
+            if line.starts_with("  ") && !merged.lines.iter().any(|saved| saved == &line) {
+                lines.push(line);
+            }
+        }
+    }
+    card.records.push(merged);
+    append_transaction_lines(card, lines);
+}
+
+fn transaction_line_count(record: &SavedRecord) -> usize {
+    record
+        .lines
+        .iter()
+        .filter(|line| line.starts_with("  "))
+        .count()
 }
 
 fn now_secs() -> u64 {
@@ -296,10 +332,27 @@ mod tests {
         next.transactions = vec![tx(3, "2026-07-10"), tx(1, "2026-07-09")];
 
         assert_eq!(append_new_transactions(&mut saved, &next), 1);
-        assert_eq!(saved.records.len(), 2);
-        assert_eq!(saved.records[0].title, "新增 1 条记录");
-        assert_eq!(saved.records[0].lines.len(), 1);
-        assert!(saved.records[0].lines[0].contains("#3 消费 -2.00¥"));
+        assert_eq!(saved.records.len(), 1);
+        assert_eq!(saved.records[0].title, "3 条记录");
+        assert_eq!(transaction_line_count(&saved.records[0]), 3);
+        assert!(saved.records[0]
+            .lines
+            .iter()
+            .any(|line| line.contains("消费 -2.00¥ 2026-07-10")));
+    }
+
+    #[test]
+    fn history_snapshot_omits_balance_and_monthly_discount() {
+        let mut card = ParsedCard::new("岭南通");
+        card.balance = Some(42.0);
+        card.add_field("广州优惠金额累计", "2026-07 ¥3.00");
+        card.transactions = vec![tx(1, "2026-07-09")];
+
+        let saved = snapshot(&card);
+        let text = saved.records[0].lines.join("\n");
+
+        assert!(!text.contains("余额:"));
+        assert!(!text.contains("广州优惠金额累计"));
     }
 
     fn tx(seq: u64, date: &str) -> Transaction {
