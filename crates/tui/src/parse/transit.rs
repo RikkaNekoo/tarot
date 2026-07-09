@@ -209,7 +209,13 @@ fn parse_card_number(name: &str, raw: &RawCardData, card: &mut ParsedCard) {
     if num.1 > 0 {
         let n = slice(hex, num.0, num.1);
         if !n.is_empty() {
-            card.number = Some(trim_leading_zeros(n));
+            let number = trim_leading_zeros(n);
+            if name == "TUnion" {
+                if let Some(card_name) = codes::tunion_card_name(&number) {
+                    card.add_field("名称", card_name);
+                }
+            }
+            card.number = Some(number);
         }
     }
     // City Union 城市代码：查城市邮政编码表。
