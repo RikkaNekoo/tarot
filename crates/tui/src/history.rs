@@ -146,6 +146,27 @@ pub fn snapshot(card: &ParsedCard) -> SavedCard {
     }
 }
 
+pub fn append_new_transactions(existing: &mut SavedCard, card: &ParsedCard) -> usize {
+    let new_lines: Vec<String> = transaction_lines(card)
+        .into_iter()
+        .filter(|line| !has_transaction_line(existing, line))
+        .collect();
+    if new_lines.is_empty() {
+        return 0;
+    }
+
+    let count = new_lines.len();
+    existing.records.insert(
+        0,
+        SavedRecord {
+            timestamp: now_secs(),
+            title: format!("新增 {count} 条记录"),
+            lines: new_lines,
+        },
+    );
+    count
+}
+
 fn record_title(card: &ParsedCard) -> String {
     if let Some(balance) = card.balance {
         return format!("余额 {}{balance:.2}", card.currency);
@@ -188,7 +209,18 @@ fn record_lines(card: &ParsedCard) -> Vec<String> {
     }
     if !card.transactions.is_empty() {
         lines.push("记录:".to_string());
-        for t in &card.transactions {
+        lines.extend(transaction_lines(card));
+    }
+    for note in &card.notes {
+        lines.push(format!("提示: {note}"));
+    }
+    lines
+}
+
+fn transaction_lines(card: &ParsedCard) -> Vec<String> {
+    card.transactions
+        .iter()
+        .map(|t| {
             let seq = t.seq.map(|s| format!("#{s} ")).unwrap_or_default();
             let dt = match (t.date.is_empty(), t.time.is_empty()) {
                 (true, true) => String::new(),
@@ -211,13 +243,15 @@ fn record_lines(card: &ParsedCard) -> Vec<String> {
             if !dt.is_empty() {
                 line.push_str(&format!(" {dt}"));
             }
-            lines.push(line);
-        }
-    }
-    for note in &card.notes {
-        lines.push(format!("提示: {note}"));
-    }
-    lines
+            line
+        })
+        .collect()
+}
+
+fn has_transaction_line(card: &SavedCard, line: &str) -> bool {
+    card.records
+        .iter()
+        .any(|record| record.lines.iter().any(|saved| saved == line))
 }
 
 fn now_secs() -> u64 {
@@ -243,4 +277,39 @@ fn decode(s: &str) -> String {
         .ok()
         .and_then(|b| String::from_utf8(b).ok())
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::parse::model::Transaction;
+
+    #[test]
+    fn append_new_transactions_only_appends_unseen_transactions() {
+        let mut first = ParsedCard::new("交通联合");
+        first.number = Some("31000001".to_string());
+        first.transactions = vec![tx(1, "2026-07-09"), tx(2, "2026-07-08")];
+        let mut saved = snapshot(&first);
+
+        let mut next = ParsedCard::new("交通联合");
+        next.number = Some("31000001".to_string());
+        next.transactions = vec![tx(3, "2026-07-10"), tx(1, "2026-07-09")];
+
+        assert_eq!(append_new_transactions(&mut saved, &next), 1);
+        assert_eq!(saved.records.len(), 2);
+        assert_eq!(saved.records[0].title, "新增 1 条记录");
+        assert_eq!(saved.records[0].lines.len(), 1);
+        assert!(saved.records[0].lines[0].contains("#3 消费 -2.00¥"));
+    }
+
+    fn tx(seq: u64, date: &str) -> Transaction {
+        Transaction {
+            seq: Some(seq),
+            kind: "消费".to_string(),
+            amount: -2.0,
+            date: date.to_string(),
+            time: "08:00:00".to_string(),
+            ..Default::default()
+        }
+    }
 }

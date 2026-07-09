@@ -352,8 +352,10 @@ impl App {
             return;
         };
 
-        let mut count = 0usize;
+        let mut transit_cards = 0usize;
+        let mut new_records = 0usize;
         for card in history::transport_cards(parsed) {
+            transit_cards += 1;
             let mut snapshot = history::snapshot(card);
             let record = snapshot.records.pop();
             let Some(record) = record else {
@@ -364,22 +366,26 @@ impl App {
                 existing.name = snapshot.name;
                 existing.number = snapshot.number;
                 existing.currency = snapshot.currency;
-                existing.records.insert(0, record);
+                new_records += history::append_new_transactions(existing, card);
                 self.selected_saved = idx;
             } else {
                 snapshot.records.push(record);
                 self.saved_cards.push(snapshot);
                 self.selected_saved = self.saved_cards.len().saturating_sub(1);
+                new_records += card.transactions.len().max(1);
             }
-            count += 1;
         }
 
-        if count == 0 {
+        if transit_cards == 0 {
             self.message = "当前卡片不是可保存的交通卡".to_string();
             return;
         }
+        if new_records == 0 {
+            self.message = "没有新的交易记录".to_string();
+            return;
+        }
         match history::save(&self.saved_cards) {
-            Ok(()) => self.message = format!("已保存 {count} 张交通卡记录"),
+            Ok(()) => self.message = format!("已保存 {new_records} 条新记录"),
             Err(e) => self.message = format!("保存失败: {e}"),
         }
     }
