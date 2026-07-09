@@ -557,7 +557,7 @@ sequenceDiagram
 
 ## 移植到 PC/SC 的关键差异汇总
 
-| 方面 | 手机 NFC | PC/SC（ACR1251U） |
+| 方面 | 手机 NFC | PC/SC |
 |------|----------|--------------------|
 | 协议层判定 | NFC 底层 `tag.standard`/`type` | 解析 ATR（PC/SC 合成格式） |
 | ISO14443-4 APDU | 直接透传 | 直接透传（SCardTransmit） |

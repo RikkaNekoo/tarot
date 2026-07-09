@@ -1,6 +1,5 @@
 //! PC/SC 读卡器层：枚举读卡器、监控卡片状态、建立连接并透传 APDU。
 //!
-//! 目标硬件为 ACR1251U（CCID）。ISO 14443-4 卡的 APDU 直接透传；
 //! Mifare/FeliCa 的裸命令由上层 `cards` 模块封装为 ACR 伪 APDU 后再经此发送。
 
 use pcsc::{Card, Context, Protocols, Scope, ShareMode, MAX_BUFFER_SIZE};

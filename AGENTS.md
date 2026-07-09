@@ -6,7 +6,7 @@
 
 `tarot` 是一个基于 PC/SC 架构的智能卡读取工具，采用前后端分离：
 
-- 后端（`crates/backend`）：通过 `pcsc` 与读卡器（目标硬件 ACR1251U）交互，
+- 后端（`crates/backend`）：通过 `pcsc` 与读卡器交互，
   负责原生 APDU 交互并抓取原始字节（Raw Bytes）。普通卡不做业务解析；
   旅行证件因加密会话有状态，例外地在后端完成认证与解密（见下）。
 - 前端（`crates/tui`）：基于 `ratatui` + `crossterm` 的 TUI，调用后端接口获取
@@ -41,9 +41,9 @@ tarot/
 
 ## 硬件与协议注意事项
 
-- 目标读卡器：ACR1251U（PC/SC CCID）。
+- 目标读卡器：PC/SC CCID 读卡器。
 - ISO 14443-4（Type A/B）卡：APDU 直接透传。
-- Mifare Classic/Ultralight、FeliCa：需走 ACR 伪 APDU / 直传通道，
+- Mifare Classic/Ultralight、FeliCa：需走伪 APDU / 直传通道，
   与手机 NFC 原生层的封装不同。
 - 卡片协议层用 ATR 解析 + Select 探测判定，不依赖上层给出的标准标记。
 - 旅行证件读取需要 MRZ 三要素（证件号、出生日期、有效期）派生密钥，

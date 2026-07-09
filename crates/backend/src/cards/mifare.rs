@@ -1,6 +1,6 @@
 //! Mifare 系列读取，对应 nfsee `ReadMifareUltralight/Classic/DESFire`。
 //!
-//! PC/SC 移植要点：与手机 NFC 直接下裸命令不同，ACR 读卡器（ACR1251U）通过
+//! PC/SC 移植要点：与手机 NFC 直接下裸命令不同
 //! PC/SC 伪 APDU 发送 Mifare 命令：
 //! - READ BINARY BLOCK：`FF B0 00 <block> <len>`
 //! - Ultralight READ（4 页）：同样用 `FF B0 00 <page> 10`

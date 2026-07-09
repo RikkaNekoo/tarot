@@ -17,7 +17,7 @@
 
 - Rust
 - PC/SC 服务
-- CCID 读卡器：目标硬件为 ACR1251U（PC/SC CCID），同时也在 HID OMNIKEY 5022 测试通过（FeliCa 读取不可用）
+- CCID 读卡器：PC/SC CCID 读卡器，在 ACS ACR1251U 以及 HID OMNIKEY 5022（FeliCa 读取不可用）测试可用
 
 ## 快速开始
 
