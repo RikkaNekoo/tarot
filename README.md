@@ -17,7 +17,7 @@
 
 - Rust
 - PC/SC 服务
-- CCID 读卡器：PC/SC CCID 读卡器，在 ACS ACR1251U 以及 HID OMNIKEY 5022（FeliCa 读取不可用）测试可用
+- CCID 读卡器：PC/SC CCID 读卡器，在 ACS ACR1251U / Sony PaSoRi RC-S300 / HID OMNIKEY 5022（FeliCa 读取不可用）测试可用
 
 ## 快速开始
 
@@ -67,6 +67,7 @@ tarot/
 │   └── tui/        # ratatui 终端界面（tarot-tui / tui）
 ├── docs/
 │   ├── apdu-analysis.md        # APDU 深度分析
+│   ├── rc-s300.md              # Sony RC-S300 PC/SC 指令与通信方式
 │   └── traveldoc-reading.md    # 旅行证件读取协议与字节布局
 └── AGENTS.md       # 开发指南
 ```
@@ -84,4 +85,3 @@ cargo clippy         # 静态检查
 - [nfsee](https://github.com/nfcim/nfsee)：本项目的基础，大多数 APDU 指令均来自 nfsee，节省了大量精力。
 - [T-Union_Master](https://github.com/SocialSisterYi/T-Union_Master)：提供了交通联合行程记录读取的思路。
 - [CoreExtendedNFC](https://github.com/Lakr233/CoreExtendedNFC)：提供了旅行证件读取的思路。
-

@@ -30,7 +30,7 @@ pub fn read_from_reader(mgr: &PcscManager, reader: &str) -> Result<RawCardData> 
     let atr_bytes = session.atr()?;
     let standard = atr::detect(&atr_bytes);
 
-    let mut data = cards::read_card(&mut session, standard, &atr)?;
+    let mut data = cards::read_card(&mut session, reader, standard, &atr)?;
     // 把会话累积的 APDU 历史并入结果。
     data.apdu_history = session.into_history();
     Ok(data)

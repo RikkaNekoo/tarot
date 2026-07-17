@@ -15,6 +15,7 @@ use tarot_core::{CardStandard, RawCardData, Result, Transceiver};
 /// 返回填充好原始字节的 [`RawCardData`]（含 `card_type`、`raw_fields`、`sub_cards`）。
 pub fn read_card<T: Transceiver>(
     tx: &mut T,
+    reader_name: &str,
     standard: CardStandard,
     atr_hex: &str,
 ) -> Result<RawCardData> {
@@ -42,7 +43,7 @@ pub fn read_card<T: Transceiver>(
             mifare::read_classic(tx, &mut data)?;
         }
         CardStandard::Felica => {
-            felica::read_octopus(tx, &mut data)?;
+            felica::read_octopus(tx, reader_name, &mut data)?;
         }
         CardStandard::Unknown => {}
     }
