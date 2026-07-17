@@ -149,6 +149,24 @@ impl CardSession {
     }
 }
 
+/// 根据短 APDU 的结构替换 Le。仅 case 2 和 case 4 存在 Le。
+fn retry_apdu_with_le(command: &[u8], le: u8) -> Option<Vec<u8>> {
+    if command.len() == 5 {
+        let mut retry = command.to_vec();
+        retry[4] = le;
+        return Some(retry);
+    }
+
+    let lc = *command.get(4)? as usize;
+    if command.len() == 6 + lc {
+        let mut retry = command.to_vec();
+        *retry.last_mut()? = le;
+        return Some(retry);
+    }
+
+    None
+}
+
 impl Transceiver for CardSession {
     fn transceive(&mut self, apdu: &Apdu) -> Result<ApduResponse> {
         let raw = self.raw_transmit(apdu.as_bytes())?;
@@ -171,13 +189,13 @@ impl Transceiver for CardSession {
 
         let mut parsed = ApduResponse::parse(&raw)?;
 
-        // 6CXX：Le 长度不对，卡片告知正确长度 XX，用它重发（case 2）。
-        if parsed.sw1 == 0x6C && apdu.as_bytes().len() >= 4 {
-            let cmd = apdu.as_bytes();
-            let retry = [cmd[0], cmd[1], cmd[2], cmd[3], parsed.sw2];
-            let raw2 = self.raw_transmit(&retry)?;
-            if raw2.len() >= 2 {
-                parsed = ApduResponse::parse(&raw2)?;
+        // 6CXX：Le 长度不对，保留原 APDU 的数据并替换 case 2/4 的 Le 后重发。
+        if parsed.sw1 == 0x6C {
+            if let Some(retry) = retry_apdu_with_le(apdu.as_bytes(), parsed.sw2) {
+                let raw2 = self.raw_transmit(&retry)?;
+                if raw2.len() >= 2 {
+                    parsed = ApduResponse::parse(&raw2)?;
+                }
             }
         }
 
@@ -207,5 +225,35 @@ impl Transceiver for CardSession {
             note: None,
         });
         Ok(parsed)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::retry_apdu_with_le;
+
+    #[test]
+    fn retry_6c_replaces_case2_le() {
+        assert_eq!(
+            retry_apdu_with_le(&[0x00, 0xB0, 0x00, 0x00, 0x00], 0x10),
+            Some(vec![0x00, 0xB0, 0x00, 0x00, 0x10])
+        );
+    }
+
+    #[test]
+    fn retry_6c_preserves_case4_data() {
+        assert_eq!(
+            retry_apdu_with_le(&[0xFF, 0xFE, 0x01, 0x00, 0x02, 0xAA, 0xBB, 0x00], 0x10),
+            Some(vec![0xFF, 0xFE, 0x01, 0x00, 0x02, 0xAA, 0xBB, 0x10])
+        );
+    }
+
+    #[test]
+    fn retry_6c_ignores_apdu_without_le() {
+        assert_eq!(retry_apdu_with_le(&[0x00, 0x84, 0x00, 0x00], 0x08), None);
+        assert_eq!(
+            retry_apdu_with_le(&[0x00, 0xA4, 0x04, 0x00, 0x02, 0xAA, 0xBB], 0x10),
+            None
+        );
     }
 }
