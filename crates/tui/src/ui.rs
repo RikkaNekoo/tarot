@@ -451,42 +451,20 @@ fn render_card<'a>(lines: &mut Vec<Line<'a>>, idx: usize, card: &'a ParsedCard) 
                 (true, false) => t.time.clone(),
                 (false, false) => format!("{} {}", t.date, t.time),
             };
-            // 符号：负为红，正为绿，0 不加符号。
-            let (sign, color) = if t.amount < 0.0 {
-                ("", Color::Red)
-            } else if t.amount > 0.0 {
-                ("+", Color::Green)
-            } else {
-                ("", Color::Gray)
-            };
             // 类型：优先显示行程的进出站类型 + 辅助（地铁/公交），否则用交易类型。
-            let kind_span = if !t.trip_kind.is_empty() {
+            let kind = if !t.trip_kind.is_empty() {
                 format!("{} [{}] ", t.trip_kind, t.aux)
             } else {
                 format!("{} ", t.kind)
             };
-            let mut spans = vec![
-                Span::raw(format!("    {kind_span}")),
-                Span::styled(
-                    format!("{sign}{:.2}{} ", t.amount, card.currency),
-                    Style::default().fg(color),
-                ),
-            ];
-            // 交易后余额（若行程记录提供）。
-            if let Some(bal) = t.balance_after {
-                spans.push(Span::styled(
-                    format!("余{:.2}{} ", bal, card.currency),
-                    Style::default().fg(Color::Green),
-                ));
-            }
-            if !t.source.is_empty() {
-                spans.push(Span::styled(
-                    format!("[{}] ", t.source),
-                    Style::default().fg(Color::DarkGray),
-                ));
-            }
-            spans.push(Span::styled(dt, Style::default().fg(Color::DarkGray)));
-            lines.push(Line::from(spans));
+            lines.push(render_transaction_line(
+                format!("    {kind}"),
+                t.amount,
+                card.currency.clone(),
+                t.balance_after,
+                t.source.clone(),
+                dt,
+            ));
         }
     }
 
@@ -543,10 +521,108 @@ fn draw_history_lines<'a>(app: &'a App, idx: usize, lines: &mut Vec<Line<'a>>) {
             ),
         ]));
         for line in &record.lines {
-            lines.push(Line::from(format!("  {line}")));
+            lines.push(render_history_line(line));
         }
         lines.push(Line::from(""));
     }
+}
+
+fn render_history_line(line: &str) -> Line<'static> {
+    if line == "记录:" {
+        return Line::from(Span::styled("  记录:", Style::default().fg(Color::Yellow)));
+    }
+    if line.starts_with("提示:") {
+        return Line::from(Span::styled(
+            format!("  {line}"),
+            Style::default().fg(Color::Red),
+        ));
+    }
+    if line.starts_with("  ") {
+        return render_history_transaction(line);
+    }
+    if let Some((key, value)) = line.split_once(": ") {
+        return kv_line(key, value);
+    }
+    Line::from(format!("  {line}"))
+}
+
+fn render_history_transaction(line: &str) -> Line<'static> {
+    let amount = line
+        .split_whitespace()
+        .find(|part| part.starts_with(['+', '-']) && part.contains('.'));
+    let Some(amount) = amount else {
+        return Line::from(format!("  {line}"));
+    };
+    let Some(amount_at) = line.find(amount) else {
+        return Line::from(format!("  {line}"));
+    };
+    let numeric_len = amount
+        .char_indices()
+        .take_while(|(_, ch)| matches!(ch, '+' | '-' | '.' | '0'..='9'))
+        .map(|(index, ch)| index + ch.len_utf8())
+        .last()
+        .unwrap_or_default();
+    let Ok(value) = amount[..numeric_len].parse::<f64>() else {
+        return Line::from(format!("  {line}"));
+    };
+    let currency = amount[numeric_len..].to_string();
+    let metadata = line[amount_at + amount.len()..].trim();
+    let (source, dt) = if let Some(rest) = metadata.strip_prefix('[') {
+        if let Some((source, dt)) = rest.split_once("] ") {
+            (source.to_string(), dt.to_string())
+        } else {
+            (rest.trim_end_matches(']').to_string(), String::new())
+        }
+    } else {
+        (String::new(), metadata.to_string())
+    };
+
+    render_transaction_line(
+        format!("  {}", &line[..amount_at]),
+        value,
+        currency,
+        None,
+        source,
+        dt,
+    )
+}
+
+fn render_transaction_line(
+    prefix: String,
+    amount: f64,
+    currency: String,
+    balance_after: Option<f64>,
+    source: String,
+    dt: String,
+) -> Line<'static> {
+    let (sign, color) = if amount < 0.0 {
+        ("", Color::Red)
+    } else if amount > 0.0 {
+        ("+", Color::Green)
+    } else {
+        ("", Color::Gray)
+    };
+    let mut spans = vec![
+        Span::raw(prefix),
+        Span::styled(
+            format!("{sign}{amount:.2}{currency} "),
+            Style::default().fg(color),
+        ),
+    ];
+    if let Some(balance) = balance_after {
+        spans.push(Span::styled(
+            format!("余{balance:.2}{currency} "),
+            Style::default().fg(Color::Green),
+        ));
+    }
+    if !source.is_empty() {
+        spans.push(Span::styled(
+            format!("[{source}] "),
+            Style::default().fg(Color::DarkGray),
+        ));
+    }
+    spans.push(Span::styled(dt, Style::default().fg(Color::DarkGray)));
+    Line::from(spans)
 }
 
 /// 已保存卡片区：选择卡片后 Enter 在左侧查看历史。
