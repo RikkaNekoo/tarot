@@ -254,7 +254,8 @@ fn append_transaction_lines(card: &mut SavedCard, lines: Vec<String>) {
     let insert_at = record
         .lines
         .iter()
-        .position(|line| line.starts_with("提示:"))
+        .position(|line| line == "记录:")
+        .map(|index| index + 1)
         .unwrap_or(record.lines.len());
     record.lines.splice(insert_at..insert_at, lines);
     record.title = format!("{} 条记录", transaction_line_count(record));
@@ -335,10 +336,13 @@ mod tests {
         assert_eq!(saved.records.len(), 1);
         assert_eq!(saved.records[0].title, "3 条记录");
         assert_eq!(transaction_line_count(&saved.records[0]), 3);
-        assert!(saved.records[0]
+        let marker = saved.records[0]
             .lines
             .iter()
-            .any(|line| line.contains("消费 -2.00¥ 2026-07-10")));
+            .position(|line| line == "记录:")
+            .unwrap();
+        assert!(saved.records[0].lines[marker + 1].contains("消费 -2.00¥ 2026-07-10"));
+        assert!(saved.records[0].lines[marker + 2].contains("消费 -2.00¥ 2026-07-09"));
     }
 
     #[test]
