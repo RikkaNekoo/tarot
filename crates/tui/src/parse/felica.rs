@@ -15,6 +15,11 @@ pub fn parse(raw: &RawCardData) -> ParsedCard {
         card.number = Some(idm.to_string());
     }
 
+    if let Some(reader) = raw.get("felica_unsupported_reader") {
+        card.notes.push(format!("不支持的读卡器：{reader}"));
+        return card;
+    }
+
     if let Some(block) = raw.get("felica_balance_block") {
         let bytes = hex_to_bytes(block);
         if let Some(bal) = extract_balance(&bytes) {
@@ -53,4 +58,28 @@ fn extract_balance(bytes: &[u8]) -> Option<f64> {
     // 大端前 4 字节。
     let raw_val = be_uint(body, data_start, data_start + 4);
     Some((raw_val as f64 - 500.0) * 10.0 / 100.0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unsupported_reader_is_reported_as_note() {
+        let mut raw = RawCardData {
+            card_type: "Octopus".into(),
+            ..Default::default()
+        };
+        raw.put("felica_idm", "0102030405060708");
+        raw.put("felica_unsupported_reader", "HID OMNIKEY 5022");
+
+        let card = parse(&raw);
+
+        assert_eq!(card.number.as_deref(), Some("0102030405060708"));
+        assert!(card.fields.is_empty());
+        assert_eq!(
+            card.notes,
+            vec!["不支持的读卡器：HID OMNIKEY 5022".to_string()]
+        );
+    }
 }

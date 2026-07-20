@@ -17,7 +17,8 @@
 
 - Rust
 - PC/SC 服务
-- CCID 读卡器：PC/SC CCID 读卡器，在 ACS ACR1251U / Sony PaSoRi RC-S300 / HID OMNIKEY 5022（FeliCa 读取不可用）测试可用
+- CCID 读卡器：PC/SC CCID 读卡器，在 ACS ACR1251U / Sony PaSoRi RC-S300 / HID OMNIKEY 5022 测试可用
+- 可选：目前仅 ACR1251U 以及 RC-S300 支持 FeliCa 读取，其它读卡器仅尝试获取 IDm
 
 ## 快速开始
 

@@ -244,12 +244,15 @@ impl App {
             Ok(data) => {
                 let parsed = parse::parse(&data);
                 let has_transit = history::transport_cards(&parsed).next().is_some();
+                let unsupported_felica_reader = data.get("felica_unsupported_reader").is_some();
                 self.parsed = Some(parsed);
                 self.raw = Some(data);
                 self.state = ReadState::Done;
                 self.parsed_scroll = 0;
                 self.history_view = None;
-                self.message = if has_transit && self.auto_save {
+                self.message = if unsupported_felica_reader {
+                    "不支持的读卡器（仅尝试获取 FeliCa IDm）".to_string()
+                } else if has_transit && self.auto_save {
                     self.save_current_transit();
                     if self.message.starts_with("已保存") {
                         format!("读取完成：{}", self.message)
